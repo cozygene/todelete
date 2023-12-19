@@ -28,6 +28,7 @@ from torchvision.transforms import (
     ToTensor,
 )
 import os
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 #%%
 class pil_contrast_strech(object):
@@ -164,8 +165,49 @@ def load_backbone(path):
 
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
+
 # %%
 backbone = load_backbone(backbone_path)
+backbone.to(device)
+
+#%%
+# Activation function for the hook
+from collections import defaultdict
+activation_backbone = defaultdict(list)
+# activation_backbone = {}
+def get_activation(name):
+    def hook(model, input, outputs):
+        activation_backbone[name].append(outputs.detach())
+    return hook
+# %%
+# Register the hooks
+# backbone[1].stages[0].layers[0].drop_path.register_forward_hook(get_activation('stage0_layer0_drop_path'))
+# backbone[1].stages[0].layers[1].drop_path.register_forward_hook(get_activation('stage0_layer1_drop_path'))
+# backbone[1].stages[0].layers[2].drop_path.register_forward_hook(get_activation('stage0_layer2_drop_path'))
+
+backbone[1].stages[1].layers[2].drop_path.register_forward_hook(get_activation('drop_path'))
+backbone[1].stages[0].layers[0].drop_path.register_forward_hook(get_activation('stage0_layer0_drop_path'))
+backbone[1].stages[0].layers[1].drop_path.register_forward_hook(get_activation('stage0_layer1_drop_path'))
+backbone[1].stages[0].layers[2].drop_path.register_forward_hook(get_activation('stage0_layer2_drop_path'))
+with torch.no_grad():
+    for i, data in enumerate(dataloader):
+        if i<3:
+            images, labels = data[0].to(device), data[1].to(device)
+            outputs = backbone(images)
+
+
+# In[]
+
+#%%
+images, labels = next(iter(dataloader))
+#%%
+with torch.no_grad():
+    outputs = backbone(images)
+    # activation_model1 = get_activation(backbone, images, lname)[layer1]
+
+
+#%%
+#%%
 
 # %%
 def get_activation(model, images, layer_name):
