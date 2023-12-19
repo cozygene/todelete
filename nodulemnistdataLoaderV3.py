@@ -147,7 +147,7 @@ from medmnist import NoduleMNIST3D
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=38, shuffle=True)
 # Iterate over the dataloader to get one image per folder
 # for images, labels in dataloader:
 #     # Process the images as needed
@@ -302,7 +302,40 @@ plt.ylabel("Model 2 Layer")
 
 # Show the plot
 plt.tight_layout()
-plt.show()                    
+plt.show() 
+#%%
+# %%
+data = dict(cka_score_std )
+layer_names = set()
+
+for key in data.keys():
+    layer_names.update(key)
+n_layers = len(layer_names)
+
+matrix = np.zeros((n_layers, n_layers))
+layer_names_list = list(layer_names)
+for (layer1, layer2), score in data.items():
+    matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
+
+plt.figure(figsize=(8, 6))
+ax = plt.matshow(matrix, cmap='coolwarm')
+
+# Set ticks and labels
+plt.xticks(range(len(x_labels)), x_labels, rotation=45)
+plt.yticks(range(len(y_labels)), y_labels)
+
+# Add colorbar
+plt.colorbar()
+
+# Title and labels
+plt.title("CKA Score Heatmap std. dev. for the Two ML Models")
+plt.xlabel("Model 1 Layer")
+plt.ylabel("Model 2 Layer")
+
+# Show the plot
+plt.tight_layout()
+plt.show()
+# %%                   
 #%%
 print('done')
 # images, labels = next(iter(dataloader))
