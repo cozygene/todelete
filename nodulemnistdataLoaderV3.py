@@ -147,7 +147,7 @@ from medmnist import NoduleMNIST3D
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
-dataloader = DataLoader(dataset, batch_size=128, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 # Iterate over the dataloader to get one image per folder
 # for images, labels in dataloader:
 #     # Process the images as needed
@@ -247,7 +247,9 @@ with torch.no_grad():
                     # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1)
                     activation_model2_flatten_np = activation_model2.cpu().numpy()
                     activation_model2_flatten_np = np.mean(activation_model2_flatten_np, axis=(1,2))
-                    this_score = linear_CKA(activation_model1_flatten_np,
+                    # this_score = linear_CKA(activation_model1_flatten_np,
+                    #                                             activation_model2_flatten_np)
+                    this_score = kernel_CKA(activation_model1_flatten_np,
                                                                 activation_model2_flatten_np)
                     print(this_score)
                     # avg_acts1 = np.mean(activation_model1, axis=(1,2))
@@ -257,74 +259,118 @@ with torch.no_grad():
 
 
 # In[]
-
-#%%
-images, labels = next(iter(dataloader))
-#%%
-with torch.no_grad():
-    outputs = backbone(images)
-    # activation_model1 = get_activation(backbone, images, lname)[layer1]
-
-
-#%%
-#%%
-
-# %%
-def get_activation(model, images, layer_name):
-    activation = {}
-
-    def hook(model, input, output):
-        activation[layer_name] = output.detach()
-
-    layer = model._modules[layer_name]
-    layer.register_forward_hook(hook)
-
-    model(images)
-
-    return activation
-
+# make a heat map of the activations
+import numpy as np
+cka_score_mean = {}
+cka_score_std = {}
+for key in cka_score.keys():
+    cka_list = cka_score[key]
+    mean_value = np.mean(cka_list)
+    std_value = np.std(cka_list)
+    cka_score_mean[key] = mean_value
+    cka_score_std[key] = std_value
 
 # %%
-# load the first batch of images from the data loader
-images, labels = next(iter(dataloader))
+import matplotlib.pyplot as plt
+data = dict(cka_score_mean)
+layer_names = set()
 
+for key in data.keys():
+    layer_names.update(key)
+n_layers = len(layer_names)
+
+matrix = np.zeros((n_layers, n_layers))
+layer_names_list = list(layer_names)
+for (layer1, layer2), score in data.items():
+    matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
+x_labels = keys.copy()
+y_labels = x_labels.copy()
+plt.figure(figsize=(8, 6))
+ax = plt.matshow(matrix, cmap='coolwarm')
+
+# Set ticks and labels
+plt.xticks(range(len(x_labels)), x_labels, rotation=45)
+plt.yticks(range(len(y_labels)), y_labels)
+
+# Add colorbar
+plt.colorbar()
+
+# Title and labels
+plt.title("CKA Score Heatmap for the Two ML Models")
+plt.xlabel("Model 1 Layer")
+plt.ylabel("Model 2 Layer")
+
+# Show the plot
+plt.tight_layout()
+plt.show()                    
 #%%
-layer_name_for_activation = ['']
-# %%
-# push images to GPU
-images = images.cuda()
-# push model to GPU
-backbone = backbone.cuda()
+print('done')
+# images, labels = next(iter(dataloader))
 #%%
-# Get layer names
-layer_name = None
-allnames = []
-allmodules = []
-for name, module in backbone.named_modules():
-    allnames.append(name)
-    allmodules.append(module)
+# with torch.no_grad():
+#     outputs = backbone(images)
+#     # activation_model1 = get_activation(backbone, images, lname)[layer1]
+
+
+# #%%
+# #%%
+
+# # %%
+# def get_activation(model, images, layer_name):
+#     activation = {}
+
+#     def hook(model, input, output):
+#         activation[layer_name] = output.detach()
+
+#     layer = model._modules[layer_name]
+#     layer.register_forward_hook(hook)
+
+#     model(images)
+
+#     return activation
+
+
+# # %%
+# # load the first batch of images from the data loader
+# images, labels = next(iter(dataloader))
+
+# #%%
+# layer_name_for_activation = ['']
+# # %%
+# # push images to GPU
+# images = images.cuda()
+# # push model to GPU
+# backbone = backbone.cuda()
+# #%%
+# # Get layer names
+# layer_name = None
+# allnames = []
+# allmodules = []
+# for name, module in backbone.named_modules():
+#     allnames.append(name)
+#     allmodules.append(module)
         
-# %%
-lname = '1.stages.0.layers.0.pwconv1'
-with torch.no_grad():
-    outputs = backbone(images)
-    activation_model1 = get_activation(backbone, images, lname)[layer1]
-# %%
-[k for k in backbone.named_parameters()]
-backbone._modules.keys()
+# # %%
+# lname = '1.stages.0.layers.0.pwconv1'
+# with torch.no_grad():
+#     outputs = backbone(images)
+#     activation_model1 = get_activation(backbone, images, lname)[layer1]
+# # %%
+# [k for k in backbone.named_parameters()]
+# backbone._modules.keys()
 
-# %%
-#%%
-activation = {}
-def get_activation(name):
-    def hook(model, input, output):
-        activation[name] = output.detach()
-    return hook
+# # %%
+# #%%
+# activation = {}
+# def get_activation(name):
+#     def hook(model, input, output):
+#         activation[name] = output.detach()
+#     return hook
 
-# %%
-# backbone[1].layernorm.register_forward_hook(get_activation('layernorm'))
-backbone[1].stages[1].layers[2].drop_path.register_forward_hook(get_activation('drop_path'))
+# # %%
+# # backbone[1].layernorm.register_forward_hook(get_activation('layernorm'))
+# backbone[1].stages[1].layers[2].drop_path.register_forward_hook(get_activation('drop_path'))
 
-output = backbone(images)
-act = activation['drop_path']
-# %%
+# output = backbone(images)
+# act = activation['drop_path']
+# # %%
