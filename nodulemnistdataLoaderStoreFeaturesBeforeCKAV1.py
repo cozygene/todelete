@@ -241,6 +241,8 @@ activate = get_activation_model(backbone, images)
 keys = list(activate.keys())
 #%%
 cka_score = defaultdict(list)
+layer_activations = defaultdict(list)
+cka_score_combined_later = defaultdict(list)
 #%%
 from itertools import combinations
 from itertools import combinations_with_replacement
@@ -285,6 +287,10 @@ with torch.no_grad():
                 # print(this_score)
                 # avg_acts1 = np.mean(activation_model1, axis=(1,2))
                 # avg_acts2 = np.mean(activation_model2, axis=(1,2))
+                # layer_activations[layer1].append(activation_model1_flatten_np)
+                # layer_activations[layer2].append(activation_model2_flatten_np)
+                layer_activations[(layer1,layer2)].append((activation_model1_flatten_np, activation_model2_flatten_np))
+
                 cka_score[(layer1,layer2)].append(this_score)
                 if layer1 != layer2:
                     cka_score[(layer2,layer1)].append(this_score)
@@ -314,19 +320,31 @@ with torch.no_grad():
             #         # avg_acts2 = np.mean(activation_model2, axis=(1,2))
             #         cka_score[(layer1,layer2)].append(this_score)
 
-
+#%%
+for ii, (layer1,layer2) in enumerate(combinations_2):    
+    this_layer_activations =  layer_activations[(layer1,layer2)]    
+    model_1_activation = np.concatenate([this_layer_activations[i][0] for i in range(len(this_layer_activations))])
+    model_2_activation = np.concatenate([this_layer_activations[i][1] for i in range(len(this_layer_activations))]) 
+    this_score = linear_CKA(model_1_activation, model_2_activation)
+    if layer1 != layer2:
+        cka_score_combined_later[(layer2,layer1)].append(this_score)
+        cka_score_combined_later[(layer1,layer2)].append(this_score)   
+    else:
+        cka_score_combined_later[(layer1,layer2)].append(this_score)        
 
 # In[]
 # make a heat map of the activations
 import numpy as np
 cka_score_mean = {}
 cka_score_std = {}
+cka_score_combined_later_mean = {}
 for key in cka_score.keys():
     cka_list = cka_score[key]
     mean_value = np.mean(cka_list)
     std_value = np.std(cka_list)
     cka_score_mean[key] = mean_value
     cka_score_std[key] = std_value
+    cka_score_combined_later_mean[key] = cka_score_combined_later[key][0]
 
 
 #%%
@@ -376,6 +394,29 @@ sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, 
 plt.xlabel('Model 1')
 plt.ylabel('Model 2')
 plt.title('Standard deviation')
+plt.show()
+#%%
+data = dict(cka_score_combined_later_mean)
+# Extract unique keys for X and Y axes
+x_keys = sorted(set(key[0] for key in data.keys()))
+y_keys = sorted(set(key[1] for key in data.keys()))
+
+# Create a matrix to store the values
+matrix = np.zeros((len(y_keys), len(x_keys)))
+
+# Fill the matrix with the corresponding values from the dictionary
+for i, y_key in enumerate(y_keys):
+    for j, x_key in enumerate(x_keys):
+        matrix[i, j] = data.get((x_key, y_key), 0.0)
+# Specify the color bar range (vmin and vmax)
+vmin, vmax = 0, 1
+# Create a heatmap using seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
+# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
+plt.xlabel('Model 1')
+plt.ylabel('Model 2')
+plt.title('Mean')
 plt.show()
 # %%
 # import matplotlib.pyplot as plt
