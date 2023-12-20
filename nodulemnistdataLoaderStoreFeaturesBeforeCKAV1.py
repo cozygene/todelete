@@ -255,7 +255,7 @@ combinations_2 = list(combinations_with_replacement(layers_names, 2))
 
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
-        if k<10:
+        if k<25:
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
