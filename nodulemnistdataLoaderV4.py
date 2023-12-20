@@ -216,14 +216,17 @@ def get_activation_model(model, images):
         return fn
 
     for i, layer in enumerate(model[1].stages[0].layers):
-        layer.layernorm.register_forward_hook(hook(f'stage0_layer{i}_layernorm'))
+        layer.dwconv.register_forward_hook(hook(f'stage0_layer{i}_dwconv'))
+        if i>1:
+            break
 
     for i, layer in enumerate(model[1].stages[0].layers):
-        layer.drop_path.register_forward_hook(hook(f'stage0_layer{i}_drop_path'))
+        if i<2:
+            layer.drop_path.register_forward_hook(hook(f'stage0_layer{i}_drop_path'))
 
     # Register forward hooks for stage 1
-    for i, layer in enumerate(model[1].stages[1].layers):
-        layer.drop_path.register_forward_hook(hook(f'stage1_layer{i}_drop_path'))
+    # for i, layer in enumerate(model[1].stages[1].layers):
+    #     layer.drop_path.register_forward_hook(hook(f'stage1_layer{i}_drop_path'))
 
     model(images)
 
@@ -241,9 +244,10 @@ cka_score = defaultdict(list)
 from itertools import combinations
 from itertools import combinations_with_replacement
 
-layers = keys.copy()
+layers_names = keys.copy()
+layers_names.append('output')
 
-combinations_2 = list(combinations_with_replacement(layers, 2))
+combinations_2 = list(combinations_with_replacement(layers_names, 2))
 #%%
 
 with torch.no_grad():
@@ -252,8 +256,11 @@ with torch.no_grad():
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
+            activation_model1_all['output'] = outputs_1[0]
             activation_model2_all = get_activation_model(backbone_2, images)
             outputs_2 = backbone_2(images)
+            activation_model2_all['output'] = outputs_2[0]
+
             for i, (layer1,layer2) in enumerate(combinations_2):
                 # print('='*50)
             # for j, layer2 in enumerate(keys):
@@ -320,75 +327,124 @@ for key in cka_score.keys():
     cka_score_mean[key] = mean_value
     cka_score_std[key] = std_value
 
-# %%
+
+#%%
 import matplotlib.pyplot as plt
+import seaborn as sns
 data = dict(cka_score_mean)
-layer_names = set()
+# Extract unique keys for X and Y axes
+x_keys = sorted(set(key[0] for key in data.keys()))
+y_keys = sorted(set(key[1] for key in data.keys()))
 
-for key in data.keys():
-    layer_names.update(key)
-n_layers = len(layer_names)
+# Create a matrix to store the values
+matrix = np.zeros((len(y_keys), len(x_keys)))
 
-matrix = np.zeros((n_layers, n_layers))
-layer_names_list = list(layer_names)
-for (layer1, layer2), score in data.items():
-    matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
-x_labels = keys.copy()
-y_labels = x_labels.copy()
-plt.figure(figsize=(8, 6))
-ax = plt.matshow(matrix, cmap='coolwarm')
-
-# Set ticks and labels
-plt.xticks(range(len(x_labels)), x_labels, rotation=45)
-plt.yticks(range(len(y_labels)), y_labels)
-
-# Add colorbar
-plt.colorbar()
-# Set scale of the colorbar to range from 0 to 1
-plt.clim(0, 1)
-# Title and labels
-plt.title("CKA Score Heatmap for the Two ML Models")
-plt.xlabel("Model 1 Layer")
-plt.ylabel("Model 2 Layer")
-
-# Show the plot
-plt.tight_layout()
-plt.show() 
-#%%
-# %%
-data = dict(cka_score_std )
-layer_names = set()
-
-for key in data.keys():
-    layer_names.update(key)
-n_layers = len(layer_names)
-
-matrix = np.zeros((n_layers, n_layers))
-layer_names_list = list(layer_names)
-for (layer1, layer2), score in data.items():
-    matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
-
-plt.figure(figsize=(8, 6))
-ax = plt.matshow(matrix, cmap='coolwarm')
-
-# Set ticks and labels
-plt.xticks(range(len(x_labels)), x_labels, rotation=45)
-plt.yticks(range(len(y_labels)), y_labels)
-
-# Add colorbar
-plt.colorbar()
-plt.clim(0, .3)
-# Title and labels
-plt.title("CKA Score Heatmap std. dev. for the Two ML Models")
-plt.xlabel("Model 1 Layer")
-plt.ylabel("Model 2 Layer")
-
-# Show the plot
-plt.tight_layout()
+# Fill the matrix with the corresponding values from the dictionary
+for i, y_key in enumerate(y_keys):
+    for j, x_key in enumerate(x_keys):
+        matrix[i, j] = data.get((x_key, y_key), 0.0)
+# Specify the color bar range (vmin and vmax)
+vmin, vmax = 0, 1
+# Create a heatmap using seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
+# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
+plt.xlabel('Model 1')
+plt.ylabel('Model 2')
+plt.title('Mean')
 plt.show()
-# %%                   
 #%%
-print('done')
+data = dict(cka_score_std)
+# Extract unique keys for X and Y axes
+x_keys = sorted(set(key[0] for key in data.keys()))
+y_keys = sorted(set(key[1] for key in data.keys()))
+
+# Create a matrix to store the values
+matrix = np.zeros((len(y_keys), len(x_keys)))
+
+# Fill the matrix with the corresponding values from the dictionary
+for i, y_key in enumerate(y_keys):
+    for j, x_key in enumerate(x_keys):
+        matrix[i, j] = data.get((x_key, y_key), 0.0)
+vmin, vmax = 0, .2
+# Create a heatmap using seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
+
+# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
+plt.xlabel('Model 1')
+plt.ylabel('Model 2')
+plt.title('Standard deviation')
+plt.show()
+# %%
+# import matplotlib.pyplot as plt
+# data = dict(cka_score_mean)
+# layer_names = set()
+
+# for key in data.keys():
+#     layer_names.update(key)
+# n_layers = len(layer_names)
+
+# matrix = np.zeros((n_layers, n_layers))
+# layer_names_list = list(layer_names)
+# for (layer1, layer2), score in data.items():
+#     matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
+# x_labels = layer_names.copy()
+# y_labels = x_labels.copy()
+# plt.figure(figsize=(8, 6))
+# ax = plt.matshow(matrix, cmap='coolwarm')
+
+# # Set ticks and labels
+# plt.xticks(range(len(x_labels)), x_labels, rotation=90)
+# plt.yticks(range(len(y_labels)), y_labels)
+
+# # Add colorbar
+# plt.colorbar()
+# # Set scale of the colorbar to range from 0 to 1
+# plt.clim(0, 1)
+# # Title and labels
+# plt.title("CKA Score Heatmap for the Two ML Models")
+# plt.xlabel("Model 1 Layer")
+# plt.ylabel("Model 2 Layer")
+
+# # Show the plot
+# plt.tight_layout()
+# plt.show() 
+# #%%
+# # %%
+# data = dict(cka_score_std )
+# layer_names = set()
+
+# for key in data.keys():
+#     layer_names.update(key)
+# n_layers = len(layer_names)
+
+# matrix = np.zeros((n_layers, n_layers))
+# layer_names_list = list(layer_names)
+# for (layer1, layer2), score in data.items():
+#     matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
+
+# plt.figure(figsize=(8, 6))
+# ax = plt.matshow(matrix, cmap='coolwarm')
+
+# # Set ticks and labels
+# plt.xticks(range(len(x_labels)), x_labels, rotation=45)
+# plt.yticks(range(len(y_labels)), y_labels)
+
+# # Add colorbar
+# plt.colorbar()
+# plt.clim(0, .3)
+# # Title and labels
+# plt.title("CKA Score Heatmap std. dev. for the Two ML Models")
+# plt.xlabel("Model 1 Layer")
+# plt.ylabel("Model 2 Layer")
+
+# # Show the plot
+# plt.tight_layout()
+# plt.show()
+# # %%                   
+# #%%
+# print('done')
 # images, labels = next(iter(dataloader))
 #%%
 # with torch.no_grad():
