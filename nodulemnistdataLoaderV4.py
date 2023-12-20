@@ -10,6 +10,7 @@ import torch
 from fastai.vision.augment import aug_transforms
 from torch.utils.data import Dataset
 from fastai.vision import *
+from tqdm import tqdm
 import sys
 sys.path.append('/scratch/pterway/slivit/SLIViT')
 from auxiliaries import *
@@ -115,6 +116,9 @@ class AmishDataset(Dataset):
 #%%    
 # Define the custom dataset
 from medmnist import NoduleMNIST3D
+# from medmnist import OCTMNIST
+from medmnist import OrganMNIST3D
+
 
 class NoduleMNISTDataset(Dataset):
     def __init__(self, dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
@@ -156,8 +160,8 @@ dataloader = DataLoader(dataset, batch_size=38, shuffle=True)
 #%%
 
 # %%
-def load_backbone(path):
-    model_tmp = AutoModelForImageClassification.from_pretrained("facebook/convnext-tiny-224", return_dict=False,num_labels=4, ignore_mismatched_sizes=True)
+def load_backbone(path, num_labels=4):
+    model_tmp = AutoModelForImageClassification.from_pretrained("facebook/convnext-tiny-224", return_dict=False,num_labels=num_labels, ignore_mismatched_sizes=True)
     model = ConvNext(model_tmp)
     model.load_state_dict(torch.load(path, map_location=torch.device("cuda")))
     model = torch.nn.Sequential(*[list(list(model_tmp.children())[0].children())[0], list(list(model_tmp.children())[0].children())[1]])
@@ -166,13 +170,19 @@ def load_backbone(path):
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
 backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/MRI_combined_backbone.pth' 
-# backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
+# backbone/SLIViT_Backbones/ssCombined_backbone.pt
+# backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/ssCombined_backbone.pt' 
+
+# backbone/SLIViT_Backbones/Xray_combined_backbone.pth
+# backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_backbone.pth' 
+# backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_combined_backbone.pth' 
+
 # backbone/SLIViT_Backbones/MRI_combined_backbone.pth
 # %%
-backbone = load_backbone(backbone_path)
+backbone = load_backbone(backbone_path, num_labels=4)
 backbone.to(device)
 
-backbone_2 = load_backbone(backbone_path_2)
+backbone_2 = load_backbone(backbone_path_2, num_labels=4)
 backbone_2.to(device)
 #%%
 # Activation function for the hook
@@ -206,11 +216,14 @@ def get_activation_model(model, images):
         return fn
 
     for i, layer in enumerate(model[1].stages[0].layers):
-        layer.pwconv2.register_forward_hook(hook(f'stage0_layer{i}_drop_path'))
+        layer.layernorm.register_forward_hook(hook(f'stage0_layer{i}_layernorm'))
+
+    for i, layer in enumerate(model[1].stages[0].layers):
+        layer.drop_path.register_forward_hook(hook(f'stage0_layer{i}_drop_path'))
 
     # Register forward hooks for stage 1
     for i, layer in enumerate(model[1].stages[1].layers):
-        layer.pwconv2.register_forward_hook(hook(f'stage1_layer{i}_drop_path'))
+        layer.drop_path.register_forward_hook(hook(f'stage1_layer{i}_drop_path'))
 
     model(images)
 
@@ -218,44 +231,80 @@ def get_activation_model(model, images):
 #%%
 images, labels = next(iter(dataloader))
 images = images.to(device)
-outputs = backbone(images)
+with torch.no_grad():
+    outputs = backbone(images)
 activate = get_activation_model(backbone, images)
 keys = list(activate.keys())
 #%%
 cka_score = defaultdict(list)
 #%%
+from itertools import combinations
+from itertools import combinations_with_replacement
+
+layers = keys.copy()
+
+combinations_2 = list(combinations_with_replacement(layers, 2))
+#%%
+
 with torch.no_grad():
-    for k, data in enumerate(dataloader):
-        if k<3:
+    for k, data in tqdm(enumerate(dataloader)):
+        if k<10:
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
             activation_model2_all = get_activation_model(backbone_2, images)
             outputs_2 = backbone_2(images)
-            for i, layer1 in enumerate(keys):
-                print('='*50)
-                for j, layer2 in enumerate(keys):
-                    print(layer1, layer2)
-                    activation_model1 = activation_model1_all[layer1]
-                    activation_model2 = activation_model2_all[layer2]
+            for i, (layer1,layer2) in enumerate(combinations_2):
+                # print('='*50)
+            # for j, layer2 in enumerate(keys):
+                # print(layer1, layer2)
+                activation_model1 = activation_model1_all[layer1]
+                activation_model2 = activation_model2_all[layer2]
 
 
-                    # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1)
-                    activation_model1_flatten_np = activation_model1.cpu().numpy()
-                    activation_model1_flatten_np = np.mean(activation_model1_flatten_np, axis=(1,2))
+                # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1)
+                activation_model1_flatten_np = activation_model1.cpu().numpy()
+                activation_model1_flatten_np = np.mean(activation_model1_flatten_np, axis=(1,2))
 
 
-                    # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1)
-                    activation_model2_flatten_np = activation_model2.cpu().numpy()
-                    activation_model2_flatten_np = np.mean(activation_model2_flatten_np, axis=(1,2))
-                    # this_score = linear_CKA(activation_model1_flatten_np,
-                    #                                             activation_model2_flatten_np)
-                    this_score = kernel_CKA(activation_model1_flatten_np,
-                                                                activation_model2_flatten_np)
-                    print(this_score)
-                    # avg_acts1 = np.mean(activation_model1, axis=(1,2))
-                    # avg_acts2 = np.mean(activation_model2, axis=(1,2))
-                    cka_score[(layer1,layer2)].append(this_score)
+                # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1)
+                activation_model2_flatten_np = activation_model2.cpu().numpy()
+                activation_model2_flatten_np = np.mean(activation_model2_flatten_np, axis=(1,2))
+                this_score = linear_CKA(activation_model1_flatten_np,
+                                                            activation_model2_flatten_np)
+                # this_score = kernel_CKA(activation_model1_flatten_np,
+                #                                             activation_model2_flatten_np)
+                # print(this_score)
+                # avg_acts1 = np.mean(activation_model1, axis=(1,2))
+                # avg_acts2 = np.mean(activation_model2, axis=(1,2))
+                cka_score[(layer1,layer2)].append(this_score)
+                if layer1 != layer2:
+                    cka_score[(layer2,layer1)].append(this_score)
+
+            # for i, layer1 in enumerate(keys):
+            #     print('='*50)
+            #     for j, layer2 in enumerate(keys):
+            #         print(layer1, layer2)
+            #         activation_model1 = activation_model1_all[layer1]
+            #         activation_model2 = activation_model2_all[layer2]
+
+
+            #         # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1)
+            #         activation_model1_flatten_np = activation_model1.cpu().numpy()
+            #         activation_model1_flatten_np = np.mean(activation_model1_flatten_np, axis=(1,2))
+
+
+            #         # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1)
+            #         activation_model2_flatten_np = activation_model2.cpu().numpy()
+            #         activation_model2_flatten_np = np.mean(activation_model2_flatten_np, axis=(1,2))
+            #         # this_score = linear_CKA(activation_model1_flatten_np,
+            #         #                                             activation_model2_flatten_np)
+            #         this_score = kernel_CKA(activation_model1_flatten_np,
+            #                                                     activation_model2_flatten_np)
+            #         print(this_score)
+            #         # avg_acts1 = np.mean(activation_model1, axis=(1,2))
+            #         # avg_acts2 = np.mean(activation_model2, axis=(1,2))
+            #         cka_score[(layer1,layer2)].append(this_score)
 
 
 
@@ -295,7 +344,8 @@ plt.yticks(range(len(y_labels)), y_labels)
 
 # Add colorbar
 plt.colorbar()
-
+# Set scale of the colorbar to range from 0 to 1
+plt.clim(0, 1)
 # Title and labels
 plt.title("CKA Score Heatmap for the Two ML Models")
 plt.xlabel("Model 1 Layer")
@@ -327,7 +377,7 @@ plt.yticks(range(len(y_labels)), y_labels)
 
 # Add colorbar
 plt.colorbar()
-
+plt.clim(0, .3)
 # Title and labels
 plt.title("CKA Score Heatmap std. dev. for the Two ML Models")
 plt.xlabel("Model 1 Layer")
