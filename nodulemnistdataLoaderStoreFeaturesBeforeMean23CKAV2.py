@@ -138,8 +138,8 @@ class NoduleMNISTDataset(Dataset):
         image, label = self.dataset[idx]
         image= image[0]
   
-        # imgs = [image[i] for i in range(image.shape[-1]) if i<1]
-        imgs = [image[i] for i in range(image.shape[-1])]
+        imgs = [image[i] for i in range(image.shape[-1]) if i<1]
+        # imgs = [image[i] for i in range(image.shape[-1])]
         t_imgs = torch.cat([torch.FloatTensor(transform_new(torch.tensor(im))) for im in imgs], dim=1)
         return t_imgs, label
         # return transforms.ToTensor()(image), label
@@ -152,7 +152,7 @@ from medmnist import NoduleMNIST3D
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=38, shuffle=True)
 # Iterate over the dataloader to get one image per folder
 # for images, labels in dataloader:
 #     # Process the images as needed
@@ -170,13 +170,13 @@ def load_backbone(path, num_labels=4):
 
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
-backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/MRI_combined_backbone.pth' 
+# backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/MRI_combined_backbone.pth' 
 # backbone/SLIViT_Backbones/ssCombined_backbone.pt
 # backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/ssCombined_backbone.pt' 
 
 # backbone/SLIViT_Backbones/Xray_combined_backbone.pth
 # backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_backbone.pth' 
-# backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_combined_backbone.pth' 
+backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_combined_backbone.pth' 
 
 #%%
 class ConvNextM(nn.Module):
@@ -193,13 +193,14 @@ class ConvNextM(nn.Module):
 
 # new_model = ConvNextM(backbone).cuda()
 # backbone/SLIViT_Backbones/MRI_combined_backbone.pth
+    # MRI 4, Xray 14 -> number of labels
 # %%
 backbone = load_backbone(backbone_path, num_labels=4)
-backbone = ConvNextM(backbone)
+# backbone = ConvNextM(backbone)
 backbone.to(device)
 
-backbone_2 = load_backbone(backbone_path_2, num_labels=4)
-backbone_2 = ConvNextM(backbone_2)
+backbone_2 = load_backbone(backbone_path_2, num_labels=14)
+# backbone_2 = ConvNextM(backbone_2)
 backbone_2.to(device)
 #%%
 # Activation function for the hook
@@ -268,17 +269,21 @@ layers_names.append('output')
 
 combinations_2 = list(combinations_with_replacement(layers_names, 2))
 #%%
-
+scores = []
+combinations_2 = ['output', 'output']
+#%%
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
         if k<25:
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
-            activation_model1_all['output'] = outputs_1[0]
+            outputs_1 = outputs_1.last_hidden_state
+            activation_model1_all['output'] = outputs_1
             activation_model2_all = get_activation_model(backbone_2, images)
             outputs_2 = backbone_2(images)
-            activation_model2_all['output'] = outputs_2[0]
+            outputs_2 = outputs_2.last_hidden_state
+            activation_model2_all['output'] = outputs_2
 
             for i, (layer1,layer2) in enumerate(combinations_2):
                 # print('='*50)
@@ -290,14 +295,29 @@ with torch.no_grad():
 
                 # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1).cpu().numpy()
                 activation_model1_flatten = activation_model1.cpu().numpy()
-                activation_model1_flatten_np = np.mean(activation_model1_flatten, axis=(1,2))
+                activation_model1_flatten_np = np.mean(activation_model1_flatten, axis=(2,3))
 
-
+                #TODO use a for loop before linear cka
                 # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1).cpu().numpy()
                 activation_model2_flatten = activation_model2.cpu().numpy()
-                activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(1,2))
-                this_score = linear_CKA(activation_model1_flatten_np,
-                                                            activation_model2_flatten_np)
+                # activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(2,3))
+                 #TODO use a for loop before linear cka
+                # scores = []
+                batch_scores = []
+                for i in range(0,activation_model2_flatten.shape[1]):
+                    map_backbone_1 = activation_model1_flatten[:,i,:,:]
+                    map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
+
+                    maps_backbone_2 = activation_model2_flatten[:,i,:,:]
+                    maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
+                
+                    this_score = linear_CKA(map_backbone_1_reshaped,
+                                                            maps_backbone_2_reshaped)
+                    
+                    batch_scores.append(this_score)
+                # this_score = np.mean(np.array(batch_scores), axis=0)
+                scores.append(batch_scores)
+
                 # this_score = kernel_CKA(activation_model1_flatten_np,
                 #                                             activation_model2_flatten_np)
                 # print(this_score)

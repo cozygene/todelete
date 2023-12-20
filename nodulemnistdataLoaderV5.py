@@ -138,8 +138,8 @@ class NoduleMNISTDataset(Dataset):
         image, label = self.dataset[idx]
         image= image[0]
   
-        # imgs = [image[i] for i in range(image.shape[-1]) if i<1]
-        imgs = [image[i] for i in range(image.shape[-1])]
+        imgs = [image[i] for i in range(image.shape[-1]) if i<1]
+        # imgs = [image[i] for i in range(image.shape[-1])]
         t_imgs = torch.cat([torch.FloatTensor(transform_new(torch.tensor(im))) for im in imgs], dim=1)
         return t_imgs, label
         # return transforms.ToTensor()(image), label
@@ -152,7 +152,7 @@ from medmnist import NoduleMNIST3D
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=38, shuffle=True)
 # Iterate over the dataloader to get one image per folder
 # for images, labels in dataloader:
 #     # Process the images as needed
@@ -178,28 +178,12 @@ backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/MRI_combine
 # backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_backbone.pth' 
 # backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Xray_combined_backbone.pth' 
 
-#%%
-class ConvNextM(nn.Module):
-    def __init__(self, model):
-        super(ConvNextM, self).__init__()
-        self.model = model  # model here is original convnext
-
-    def forward(self, x):
-        x = self.model(x)
-        x=x.last_hidden_state # Output size : batch x 768 x 8 x n_slices * 8  
-        x = x.reshape((x.shape[0],x.shape[1] * int(x.shape[3] / 8), 8, 8))  # Output size : batch x 768 * n_slices x 8 x 8
-        return x
-#%%
-
-# new_model = ConvNextM(backbone).cuda()
 # backbone/SLIViT_Backbones/MRI_combined_backbone.pth
 # %%
 backbone = load_backbone(backbone_path, num_labels=4)
-backbone = ConvNextM(backbone)
 backbone.to(device)
 
 backbone_2 = load_backbone(backbone_path_2, num_labels=4)
-backbone_2 = ConvNextM(backbone_2)
 backbone_2.to(device)
 #%%
 # Activation function for the hook
@@ -257,8 +241,6 @@ activate = get_activation_model(backbone, images)
 keys = list(activate.keys())
 #%%
 cka_score = defaultdict(list)
-layer_activations = defaultdict(list)
-cka_score_combined_later = defaultdict(list)
 #%%
 from itertools import combinations
 from itertools import combinations_with_replacement
@@ -271,7 +253,7 @@ combinations_2 = list(combinations_with_replacement(layers_names, 2))
 
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
-        if k<25:
+        if k<100:
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
@@ -290,12 +272,12 @@ with torch.no_grad():
 
                 # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1).cpu().numpy()
                 activation_model1_flatten = activation_model1.cpu().numpy()
-                activation_model1_flatten_np = np.mean(activation_model1_flatten, axis=(1,2))
+                activation_model1_flatten_np = np.mean(activation_model1_flatten, axis=(2,3))
 
 
                 # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1).cpu().numpy()
                 activation_model2_flatten = activation_model2.cpu().numpy()
-                activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(1,2))
+                activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(2,3))
                 this_score = linear_CKA(activation_model1_flatten_np,
                                                             activation_model2_flatten_np)
                 # this_score = kernel_CKA(activation_model1_flatten_np,
@@ -303,10 +285,6 @@ with torch.no_grad():
                 # print(this_score)
                 # avg_acts1 = np.mean(activation_model1, axis=(1,2))
                 # avg_acts2 = np.mean(activation_model2, axis=(1,2))
-                # layer_activations[layer1].append(activation_model1_flatten_np)
-                # layer_activations[layer2].append(activation_model2_flatten_np)
-                layer_activations[(layer1,layer2)].append((activation_model1_flatten_np, activation_model2_flatten_np))
-
                 cka_score[(layer1,layer2)].append(this_score)
                 if layer1 != layer2:
                     cka_score[(layer2,layer1)].append(this_score)
@@ -336,31 +314,19 @@ with torch.no_grad():
             #         # avg_acts2 = np.mean(activation_model2, axis=(1,2))
             #         cka_score[(layer1,layer2)].append(this_score)
 
-#%%
-for ii, (layer1,layer2) in enumerate(combinations_2):    
-    this_layer_activations =  layer_activations[(layer1,layer2)]    
-    model_1_activation = np.concatenate([this_layer_activations[i][0] for i in range(len(this_layer_activations))])
-    model_2_activation = np.concatenate([this_layer_activations[i][1] for i in range(len(this_layer_activations))]) 
-    this_score = linear_CKA(model_1_activation, model_2_activation)
-    if layer1 != layer2:
-        cka_score_combined_later[(layer2,layer1)].append(this_score)
-        cka_score_combined_later[(layer1,layer2)].append(this_score)   
-    else:
-        cka_score_combined_later[(layer1,layer2)].append(this_score)        
+
 
 # In[]
 # make a heat map of the activations
 import numpy as np
 cka_score_mean = {}
 cka_score_std = {}
-cka_score_combined_later_mean = {}
 for key in cka_score.keys():
     cka_list = cka_score[key]
     mean_value = np.mean(cka_list)
     std_value = np.std(cka_list)
     cka_score_mean[key] = mean_value
     cka_score_std[key] = std_value
-    cka_score_combined_later_mean[key] = cka_score_combined_later[key][0]
 
 
 #%%
@@ -410,29 +376,6 @@ sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, 
 plt.xlabel('Model 1')
 plt.ylabel('Model 2')
 plt.title('Standard deviation')
-plt.show()
-#%%
-data = dict(cka_score_combined_later_mean)
-# Extract unique keys for X and Y axes
-x_keys = sorted(set(key[0] for key in data.keys()))
-y_keys = sorted(set(key[1] for key in data.keys()))
-
-# Create a matrix to store the values
-matrix = np.zeros((len(y_keys), len(x_keys)))
-
-# Fill the matrix with the corresponding values from the dictionary
-for i, y_key in enumerate(y_keys):
-    for j, x_key in enumerate(x_keys):
-        matrix[i, j] = data.get((x_key, y_key), 0.0)
-# Specify the color bar range (vmin and vmax)
-vmin, vmax = 0, 1
-# Create a heatmap using seaborn
-plt.figure(figsize=(10, 8))
-sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
-# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
-plt.xlabel('Model 1')
-plt.ylabel('Model 2')
-plt.title('Mean')
 plt.show()
 # %%
 # import matplotlib.pyplot as plt
