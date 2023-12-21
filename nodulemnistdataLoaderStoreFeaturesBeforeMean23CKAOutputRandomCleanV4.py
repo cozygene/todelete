@@ -169,23 +169,7 @@ def load_backbone(path, num_labels=4):
     model.load_state_dict(torch.load(path, map_location=torch.device("cuda")))
     model = torch.nn.Sequential(*[list(list(model_tmp.children())[0].children())[0], list(list(model_tmp.children())[0].children())[1]])
     return model
-#%%
-def load_backbone_random(path, num_labels=4):
-    model_tmp = AutoModelForImageClassification.from_pretrained("facebook/convnext-tiny-224", return_dict=False, num_labels=num_labels, ignore_mismatched_sizes=True)
-    model = ConvNext(model_tmp)
-    
-    # Reset the weights to random values
-    model.apply(reset_weights)
-    
-    # Load the state dictionary
-    state_dict = torch.load(path, map_location=torch.device("cuda"))
-    model.load_state_dict(state_dict, strict=False)
-    
-    return model
 
-def reset_weights(m):
-    if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-        m.reset_parameters()
 
 
 # %%
