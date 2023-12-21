@@ -276,7 +276,7 @@ combinations_2 = [('output', 'output')]
 #%%
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
-        if k<50:
+        if k<10:
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
@@ -305,20 +305,40 @@ with torch.no_grad():
                 # activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(2,3))
                  #TODO use a for loop before linear cka
                 # scores = []
+                dimension_array = activation_model1_flatten.shape[1]
+                cross_Score = np.zeros((dimension_array, dimension_array))
                 batch_scores = []
                 for i in range(0,activation_model2_flatten.shape[1]):
-                    map_backbone_1 = activation_model1_flatten[:,i,:,:]
-                    map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
+                    for j in range(0,activation_model1_flatten.shape[1]):
+                        map_backbone_1 = activation_model1_flatten[:,i,:,:]
+                        map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
 
-                    maps_backbone_2 = activation_model2_flatten[:,i,:,:]
-                    maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
-                
-                    this_score = linear_CKA(map_backbone_1_reshaped,
-                                                            maps_backbone_2_reshaped)
+                        maps_backbone_2 = activation_model2_flatten[:,j,:,:]
+                        maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
                     
-                    batch_scores.append(this_score)
-                # this_score = np.mean(np.array(batch_scores), axis=0)
-                scores.append(batch_scores)
+                        this_score = linear_CKA(map_backbone_1_reshaped,
+                                                                maps_backbone_2_reshaped)
+                        cross_Score[i][j] = this_score
+
+                scores.append(cross_Score)
+                    # this_score = np.mean(np.array(batch_scores), axis=0)
+                    # scores.append(batch_scores)
+                
+                
+                # for i in range(0,activation_model2_flatten.shape[1]):
+                #     map_backbone_1 = activation_model1_flatten[:,i,:,:]
+                #     map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
+
+                #     maps_backbone_2 = activation_model2_flatten[:,i,:,:]
+                #     maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
+                
+                #     this_score = linear_CKA(map_backbone_1_reshaped,
+                #                                             maps_backbone_2_reshaped)
+                    
+                #     batch_scores.append(this_score)
+
+                # # this_score = np.mean(np.array(batch_scores), axis=0)
+                # scores.append(batch_scores)
 
                 # this_score = kernel_CKA(activation_model1_flatten_np,
                 #                                             activation_model2_flatten_np)
@@ -357,6 +377,26 @@ with torch.no_grad():
             #         # avg_acts1 = np.mean(activation_model1, axis=(1,2))
             #         # avg_acts2 = np.mean(activation_model2, axis=(1,2))
             #         cka_score[(layer1,layer2)].append(this_score)
+#%%
+# Convert the list of 2D arrays to a 3D array
+scores_3d = np.stack(scores)         
+#%%    
+mean_matrix = np.mean(scores_3d, axis=0)
+std_matrix = np.std(scores_3d, axis=0)
+np.savez('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer.npz', mean_matrix=mean_matrix, std_matrix=std_matrix)
+#%%
+# make a heatmaps of the mean and std
+import matplotlib.pyplot as plt
+import seaborn as sns
+# Create a heatmap using Seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(mean_matrix[:10,:10], annot=True, fmt=".2f", cmap="YlGnBu")
+plt.xlabel('Column')
+plt.ylabel('Row')
+plt.title('Heatmap of Mean Matrix')
+plt.show()
+
+
 #%%
 scores_array = np.array(scores)
 # compute the mean and std
