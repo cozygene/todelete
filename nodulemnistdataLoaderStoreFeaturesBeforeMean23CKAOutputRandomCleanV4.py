@@ -174,16 +174,19 @@ def load_backbone_random(path, num_labels=4):
     model_tmp = AutoModelForImageClassification.from_pretrained("facebook/convnext-tiny-224", return_dict=False, num_labels=num_labels, ignore_mismatched_sizes=True)
     model = ConvNext(model_tmp)
     
-    # Randomly initialize the weights
-    model.apply(weights_init)
+    # Reset the weights to random values
+    model.apply(reset_weights)
+    
+    # Load the state dictionary
+    state_dict = torch.load(path, map_location=torch.device("cuda"))
+    model.load_state_dict(state_dict, strict=False)
     
     return model
 
-def weights_init(m):
+def reset_weights(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight)
-        if m.bias is not None:
-            torch.nn.init.zeros_(m.bias)
+        m.reset_parameters()
+
 
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
@@ -323,6 +326,7 @@ with torch.no_grad():
                  #TODO use a for loop before linear cka
                 # scores = []
                 dimension_array = activation_model1_flatten.shape[1]
+                # dimension_array = 10
                 cross_Score = np.zeros((dimension_array, dimension_array))
                 batch_scores = []
                 for i in range(0,activation_model2_flatten.shape[1]):
@@ -331,6 +335,7 @@ with torch.no_grad():
                         map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
 
                         maps_backbone_2 = activation_model2_flatten[:,j,:,:]
+                        maps_backbone_2 = np.random.random(maps_backbone_2.shape)
                         maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
                     
                         this_score = linear_CKA(map_backbone_1_reshaped,
@@ -338,62 +343,7 @@ with torch.no_grad():
                         cross_Score[i][j] = this_score
 
                 scores.append(cross_Score)
-                    # this_score = np.mean(np.array(batch_scores), axis=0)
-                    # scores.append(batch_scores)
-                
-                
-                # for i in range(0,activation_model2_flatten.shape[1]):
-                #     map_backbone_1 = activation_model1_flatten[:,i,:,:]
-                #     map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
-
-                #     maps_backbone_2 = activation_model2_flatten[:,i,:,:]
-                #     maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
-                
-                #     this_score = linear_CKA(map_backbone_1_reshaped,
-                #                                             maps_backbone_2_reshaped)
-                    
-                #     batch_scores.append(this_score)
-
-                # # this_score = np.mean(np.array(batch_scores), axis=0)
-                # scores.append(batch_scores)
-
-                # this_score = kernel_CKA(activation_model1_flatten_np,
-                #                                             activation_model2_flatten_np)
-                # print(this_score)
-                # avg_acts1 = np.mean(activation_model1, axis=(1,2))
-                # avg_acts2 = np.mean(activation_model2, axis=(1,2))
-                # layer_activations[layer1].append(activation_model1_flatten_np)
-                # layer_activations[layer2].append(activation_model2_flatten_np)
-                # layer_activations[(layer1,layer2)].append((activation_model1_flatten_np, activation_model2_flatten_np))
-
-                # cka_score[(layer1,layer2)].append(this_score)
-                # if layer1 != layer2:
-                #     cka_score[(layer2,layer1)].append(this_score)
-
-            # for i, layer1 in enumerate(keys):
-            #     print('='*50)
-            #     for j, layer2 in enumerate(keys):
-            #         print(layer1, layer2)
-            #         activation_model1 = activation_model1_all[layer1]
-            #         activation_model2 = activation_model2_all[layer2]
-
-
-            #         # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1)
-            #         activation_model1_flatten_np = activation_model1.cpu().numpy()
-            #         activation_model1_flatten_np = np.mean(activation_model1_flatten_np, axis=(1,2))
-
-
-            #         # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1)
-            #         activation_model2_flatten_np = activation_model2.cpu().numpy()
-            #         activation_model2_flatten_np = np.mean(activation_model2_flatten_np, axis=(1,2))
-            #         # this_score = linear_CKA(activation_model1_flatten_np,
-            #         #                                             activation_model2_flatten_np)
-            #         this_score = kernel_CKA(activation_model1_flatten_np,
-            #                                                     activation_model2_flatten_np)
-            #         print(this_score)
-            #         # avg_acts1 = np.mean(activation_model1, axis=(1,2))
-            #         # avg_acts2 = np.mean(activation_model2, axis=(1,2))
-            #         cka_score[(layer1,layer2)].append(this_score)
+ 
 #%%
 # Convert the list of 2D arrays to a 3D array
 scores_3d = np.stack(scores)         
@@ -402,9 +352,9 @@ loading = True
 if loading==False:
     mean_matrix = np.mean(scores_3d, axis=0)
     std_matrix = np.std(scores_3d, axis=0)
-    np.savez('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer.npz', mean_matrix=mean_matrix, std_matrix=std_matrix)
+    np.savez('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer_random.npz', mean_matrix=mean_matrix, std_matrix=std_matrix)
 else:
-    data = np.load('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer.npz')
+    data = np.load('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer_random.npz')
     mean_matrix = data['mean_matrix']
     std_matrix = data['std_matrix']
 #%%
@@ -438,217 +388,27 @@ plt.xlabel('Feature number')
 plt.ylabel('Feature number')
 plt.title('Heatmap of Mean Matrix')
 plt.show()
-
-
 #%%
-scores_array = np.array(scores)
-# compute the mean and std
-scores_mean = np.mean(scores_array, axis=0)
-scores_std = np.std(scores_array, axis=0)  
-# make a bar plot of the mean and std
-#%%
-import matplotlib.pyplot as plt
+# Create a heatmap using Seaborn
+subset_std = std_matrix[top_10_indices][:, top_10_indices]
 
-# Calculate the number of features per subplot
-n_features = len(scores_mean)
-features_per_subplot = n_features // 4
-
-# Create a figure with four subplots
-fig, axs = plt.subplots(2, 2, figsize=(10*2, 8))
-
-# Iterate over the subplots and plot the corresponding features
-for i, ax in enumerate(axs.flat):
-    start_idx = i * features_per_subplot
-    end_idx = start_idx + features_per_subplot
-
-    ax.bar(np.arange(start_idx, end_idx), scores_mean[start_idx:end_idx], yerr=scores_std[start_idx:end_idx])
-    ax.set_ylabel('CKA Score')
-    ax.set_xlabel('Feature map')
-    ax.set_title(f'CKA Score across feature maps (Plot {i+1})')
-
-# Adjust the spacing between subplots
-plt.tight_layout()
-
-# Show the plot
-plt.show()
-#%%
 plt.figure(figsize=(10, 8))
-plt.bar(np.arange(len(scores_std)), scores_std, yerr=scores_std)
-# plt.xticks(np.arange(len(scores_std)), keys, rotation=90)
-plt.ylabel('CKA Score std. dev.')
-plt.xlabel('Feature map')
-plt.title('CKA Score std. dev. across feature maps')
-plt.show()
-
-#%%
-for ii, (layer1,layer2) in enumerate(combinations_2):    
-    this_layer_activations =  layer_activations[(layer1,layer2)]    
-    model_1_activation = np.concatenate([this_layer_activations[i][0] for i in range(len(this_layer_activations))])
-    model_2_activation = np.concatenate([this_layer_activations[i][1] for i in range(len(this_layer_activations))]) 
-    this_score = linear_CKA(model_1_activation, model_2_activation)
-    if layer1 != layer2:
-        cka_score_combined_later[(layer2,layer1)].append(this_score)
-        cka_score_combined_later[(layer1,layer2)].append(this_score)   
-    else:
-        cka_score_combined_later[(layer1,layer2)].append(this_score)        
-
-# In[]
-# make a heat map of the activations
-import numpy as np
-cka_score_mean = {}
-cka_score_std = {}
-cka_score_combined_later_mean = {}
-for key in cka_score.keys():
-    cka_list = cka_score[key]
-    mean_value = np.mean(cka_list)
-    std_value = np.std(cka_list)
-    cka_score_mean[key] = mean_value
-    cka_score_std[key] = std_value
-    cka_score_combined_later_mean[key] = cka_score_combined_later[key][0]
-
-
-#%%
-import matplotlib.pyplot as plt
-import seaborn as sns
-data = dict(cka_score_mean)
-# Extract unique keys for X and Y axes
-x_keys = sorted(set(key[0] for key in data.keys()))
-y_keys = sorted(set(key[1] for key in data.keys()))
-
-# Create a matrix to store the values
-matrix = np.zeros((len(y_keys), len(x_keys)))
-
-# Fill the matrix with the corresponding values from the dictionary
-for i, y_key in enumerate(y_keys):
-    for j, x_key in enumerate(x_keys):
-        matrix[i, j] = data.get((x_key, y_key), 0.0)
-# Specify the color bar range (vmin and vmax)
 vmin, vmax = 0, 1
-# Create a heatmap using seaborn
-plt.figure(figsize=(10, 8))
-sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
-# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
-plt.xlabel('Model 1')
-plt.ylabel('Model 2')
-plt.title('Mean')
+# sns.heatmap(mean_matrix[:10,:10], annot=True, fmt=".2f", cmap="YlGnBu",  vmin=vmin, vmax=vmax)
+sns.heatmap(subset_std, annot=True, fmt=".2f", cmap="YlGnBu",  vmin=vmin, vmax=vmax)
+
+# Set the x and y ticks using top_10_indices
+plt.xticks(range(len(top_10_indices)), top_10_indices)
+plt.yticks(range(len(top_10_indices)), top_10_indices)
+
+plt.xlabel('Feature number')
+plt.ylabel('Feature number')
+plt.title('Heatmap of Mean Matrix')
 plt.show()
+
+
 #%%
-data = dict(cka_score_std)
-# Extract unique keys for X and Y axes
-x_keys = sorted(set(key[0] for key in data.keys()))
-y_keys = sorted(set(key[1] for key in data.keys()))
 
-# Create a matrix to store the values
-matrix = np.zeros((len(y_keys), len(x_keys)))
-
-# Fill the matrix with the corresponding values from the dictionary
-for i, y_key in enumerate(y_keys):
-    for j, x_key in enumerate(x_keys):
-        matrix[i, j] = data.get((x_key, y_key), 0.0)
-vmin, vmax = 0, .4
-# Create a heatmap using seaborn
-plt.figure(figsize=(10, 8))
-sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
-
-# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
-plt.xlabel('Model 1')
-plt.ylabel('Model 2')
-plt.title('Standard deviation')
-plt.show()
-#%%
-data = dict(cka_score_combined_later_mean)
-# Extract unique keys for X and Y axes
-x_keys = sorted(set(key[0] for key in data.keys()))
-y_keys = sorted(set(key[1] for key in data.keys()))
-
-# Create a matrix to store the values
-matrix = np.zeros((len(y_keys), len(x_keys)))
-
-# Fill the matrix with the corresponding values from the dictionary
-for i, y_key in enumerate(y_keys):
-    for j, x_key in enumerate(x_keys):
-        matrix[i, j] = data.get((x_key, y_key), 0.0)
-# Specify the color bar range (vmin and vmax)
-vmin, vmax = 0, 1
-# Create a heatmap using seaborn
-plt.figure(figsize=(10, 8))
-sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
-# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
-plt.xlabel('Model 1')
-plt.ylabel('Model 2')
-plt.title('Mean')
-plt.show()
-# %%
-# import matplotlib.pyplot as plt
-# data = dict(cka_score_mean)
-# layer_names = set()
-
-# for key in data.keys():
-#     layer_names.update(key)
-# n_layers = len(layer_names)
-
-# matrix = np.zeros((n_layers, n_layers))
-# layer_names_list = list(layer_names)
-# for (layer1, layer2), score in data.items():
-#     matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
-# x_labels = layer_names.copy()
-# y_labels = x_labels.copy()
-# plt.figure(figsize=(8, 6))
-# ax = plt.matshow(matrix, cmap='coolwarm')
-
-# # Set ticks and labels
-# plt.xticks(range(len(x_labels)), x_labels, rotation=90)
-# plt.yticks(range(len(y_labels)), y_labels)
-
-# # Add colorbar
-# plt.colorbar()
-# # Set scale of the colorbar to range from 0 to 1
-# plt.clim(0, 1)
-# # Title and labels
-# plt.title("CKA Score Heatmap for the Two ML Models")
-# plt.xlabel("Model 1 Layer")
-# plt.ylabel("Model 2 Layer")
-
-# # Show the plot
-# plt.tight_layout()
-# plt.show() 
-# #%%
-# # %%
-# data = dict(cka_score_std )
-# layer_names = set()
-
-# for key in data.keys():
-#     layer_names.update(key)
-# n_layers = len(layer_names)
-
-# matrix = np.zeros((n_layers, n_layers))
-# layer_names_list = list(layer_names)
-# for (layer1, layer2), score in data.items():
-#     matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
-
-# plt.figure(figsize=(8, 6))
-# ax = plt.matshow(matrix, cmap='coolwarm')
-
-# # Set ticks and labels
-# plt.xticks(range(len(x_labels)), x_labels, rotation=45)
-# plt.yticks(range(len(y_labels)), y_labels)
-
-# # Add colorbar
-# plt.colorbar()
-# plt.clim(0, .3)
-# # Title and labels
-# plt.title("CKA Score Heatmap std. dev. for the Two ML Models")
-# plt.xlabel("Model 1 Layer")
-# plt.ylabel("Model 2 Layer")
-
-# # Show the plot
-# plt.tight_layout()
-# plt.show()
-# # %%                   
-# #%%
-# print('done')
-# images, labels = next(iter(dataloader))
-#%%
 # with torch.no_grad():
 #     outputs = backbone(images)
 #     # activation_model1 = get_activation(backbone, images, lname)[layer1]

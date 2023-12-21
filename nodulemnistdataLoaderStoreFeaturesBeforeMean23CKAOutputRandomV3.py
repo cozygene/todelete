@@ -174,16 +174,19 @@ def load_backbone_random(path, num_labels=4):
     model_tmp = AutoModelForImageClassification.from_pretrained("facebook/convnext-tiny-224", return_dict=False, num_labels=num_labels, ignore_mismatched_sizes=True)
     model = ConvNext(model_tmp)
     
-    # Randomly initialize the weights
-    model.apply(weights_init)
+    # Reset the weights to random values
+    model.apply(reset_weights)
+    
+    # Load the state dictionary
+    state_dict = torch.load(path, map_location=torch.device("cuda"))
+    model.load_state_dict(state_dict, strict=False)
     
     return model
 
-def weights_init(m):
+def reset_weights(m):
     if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight)
-        if m.bias is not None:
-            torch.nn.init.zeros_(m.bias)
+        m.reset_parameters()
+
 
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
@@ -323,6 +326,7 @@ with torch.no_grad():
                  #TODO use a for loop before linear cka
                 # scores = []
                 dimension_array = activation_model1_flatten.shape[1]
+                # dimension_array = 10
                 cross_Score = np.zeros((dimension_array, dimension_array))
                 batch_scores = []
                 for i in range(0,activation_model2_flatten.shape[1]):
@@ -331,6 +335,7 @@ with torch.no_grad():
                         map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
 
                         maps_backbone_2 = activation_model2_flatten[:,j,:,:]
+                        maps_backbone_2 = np.random.random(maps_backbone_2.shape)
                         maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
                     
                         this_score = linear_CKA(map_backbone_1_reshaped,
@@ -402,7 +407,7 @@ loading = True
 if loading==False:
     mean_matrix = np.mean(scores_3d, axis=0)
     std_matrix = np.std(scores_3d, axis=0)
-    np.savez('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer.npz', mean_matrix=mean_matrix, std_matrix=std_matrix)
+    np.savez('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer_random.npz', mean_matrix=mean_matrix, std_matrix=std_matrix)
 else:
     data = np.load('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer.npz')
     mean_matrix = data['mean_matrix']
