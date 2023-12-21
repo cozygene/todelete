@@ -137,8 +137,10 @@ class NoduleMNISTDataset(Dataset):
     def __getitem__(self, idx):
         image, label = self.dataset[idx]
         image= image[0]
-  
-        imgs = [image[i] for i in range(image.shape[-1]) if i<1]
+        total_frames = image.shape[-1]
+        middle_frame = int(total_frames/2)
+        imgs = [image[i] for i in range(image.shape[-1]) if i==middle_frame]
+        # imgs = [image[i] for i in range(image.shape[-1]) if i<1]
         # imgs = [image[i] for i in range(image.shape[-1])]
         t_imgs = torch.cat([torch.FloatTensor(transform_new(torch.tensor(im))) for im in imgs], dim=1)
         return t_imgs, label
@@ -285,7 +287,7 @@ with torch.no_grad():
             outputs_2 = outputs_2.last_hidden_state
             activation_model2_all['output'] = outputs_2
 
-            for i, (layer1,layer2) in enumerate(combinations_2):
+            for ii, (layer1,layer2) in enumerate(combinations_2):
                 # print('='*50)
             # for j, layer2 in enumerate(keys):
                 # print(layer1, layer2)
