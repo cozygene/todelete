@@ -11,11 +11,13 @@ from fastai.vision.augment import aug_transforms
 from torch.utils.data import Dataset
 from fastai.vision import *
 from tqdm import tqdm
+
 import sys
 sys.path.append('/scratch/pterway/slivit/SLIViT')
-import torch.nn.init as init
+from CKAGoogle import feature_space_linear_cka, cka, gram_linear, gram_rbf, cca
+
 from auxiliaries import *
-from transformers import ConvNextConfig, ConvNextModel
+
 from batchgenerators.transforms.spatial_transforms import SpatialTransform, MirrorTransform
 from batchgenerators.transforms.color_transforms import BrightnessMultiplicativeTransform, GammaTransform, \
     BrightnessTransform, ContrastAugmentationTransform
@@ -123,7 +125,7 @@ from medmnist import OrganMNIST3D
 
 class NoduleMNISTDataset(Dataset):
     def __init__(self, dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
-                                               split='test', download=True),
+                                               split='train', download=True),
                                                 transform=transform_new  
                                             ):
         super().__init__()
@@ -140,14 +142,13 @@ class NoduleMNISTDataset(Dataset):
         image= image[0]
         total_frames = image.shape[-1]
         middle_frame = int(total_frames/2)
-        imgs = [image[i] for i in range(image.shape[-1]) if i==middle_frame]
-        # imgs = [image[i] for i in range(image.shape[-1]) if i<1]
+        # imgs = [image[i] for i in range(image.shape[-1]) if i==middle_frame]
+        imgs = [image[i] for i in range(image.shape[-1]) if i<middle_frame]
         # imgs = [image[i] for i in range(image.shape[-1])]
         t_imgs = torch.cat([torch.FloatTensor(transform_new(torch.tensor(im))) for im in imgs], dim=1)
         return t_imgs, label
         # return transforms.ToTensor()(image), label
         # return torch.FloatTensor(self.dataset[idx][0]), self.dataset[idx][1].astype(np.float32)
-
 #%%
 from medmnist import NoduleMNIST3D
 # dataset = NoduleMNIST3D(root='/scratch/pterway/slivit/datasets', split='train', download=True)    
@@ -155,7 +156,7 @@ from medmnist import NoduleMNIST3D
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 # Iterate over the dataloader to get one image per folder
 # for images, labels in dataloader:
 #     # Process the images as needed
@@ -170,49 +171,6 @@ def load_backbone(path, num_labels=4):
     model.load_state_dict(torch.load(path, map_location=torch.device("cuda")))
     model = torch.nn.Sequential(*[list(list(model_tmp.children())[0].children())[0], list(list(model_tmp.children())[0].children())[1]])
     return model
-
-#%%
-# def load_backbone_scratch(num_labels=4, num_channels = 3):
-#     print('scratch backbone Loading')
-#     configuration = ConvNextConfig(num_labels=num_labels,num_channels=num_channels)
-#     model2 = ConvNextModel(configuration)
-#     model = ConvNext(model2)
-#     model_tmp=list(model.children())[0]
-#     model_tmp = list(model_tmp.children())
-#     model= torch.nn.Sequential(
-#         model_tmp[0], model_tmp[1],model_tmp[2])
-#     return model
-
-def load_backbone_scratch(path, num_labels=4):
-    model_tmp = AutoModelForImageClassification.from_pretrained("facebook/convnext-tiny-224", return_dict=False, num_labels=num_labels, ignore_mismatched_sizes=True)
-    model = ConvNext(model_tmp)
-
-    # Load the state dict, but don't overwrite weights
-    model_dict = model.state_dict()
-    state_dict = torch.load(path, map_location=torch.device("cuda"))
-    pretrained_dict = {k: v for k, v in state_dict.items() if k in model_dict and model_dict[k].shape == state_dict[k].shape}
-    model_dict.update(pretrained_dict)
-    model.load_state_dict(model_dict)
-
-    # # Initialize weights with Xavier initialization, handling 1D tensors appropriately
-    # for param in model.parameters():
-    #     if param.requires_grad:
-    #         if len(param.shape) >= 2:  # Apply Xavier initialization for tensors with 2 or more dimensions
-    #             init.xavier_uniform_(param)  # Use xavier_uniform_ for activations like tanh or sigmoid
-    #         else:  # For 1D tensors (e.g., biases), use a different initialization strategy
-    #             init.normal_(param, mean=0.0, std=0.01)  # Example: Normal initialization
-
-    model = torch.nn.Sequential(*[list(list(model_tmp.children())[0].children())[0], list(list(model_tmp.children())[0].children())[1]])
-    # Initialize weights with Xavier initialization, handling 1D tensors appropriately
-    for param in model.parameters():
-        if param.requires_grad:
-            # if len(param.shape) >= 2:  # Apply Xavier initialization for tensors with 2 or more dimensions
-            #     init.xavier_uniform_(param)  # Use xavier_uniform_ for activations like tanh or sigmoid
-            # else:  # For 1D tensors (e.g., biases), use a different initialization strategy
-            #     init.normal_(param, mean=0.0, std=0.01)  # Example: Normal initialization
-             init.normal_(param, a=-0.05, b=0.05)
-    return model
-
 
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
@@ -246,10 +204,6 @@ backbone = load_backbone(backbone_path, num_labels=4)
 backbone.to(device)
 
 backbone_2 = load_backbone(backbone_path_2, num_labels=14)
-# backbone_2 = load_backbone_scratch(backbone_path, num_labels=4)
-
-# backbone_2 = load_backbone_random(backbone_path_2, num_labels=14)
-
 # backbone_2 = ConvNextM(backbone_2)
 backbone_2.to(device)
 #%%
@@ -309,22 +263,23 @@ keys = list(activate.keys())
 #%%
 cka_score = defaultdict(list)
 layer_activations = defaultdict(list)
-cka_score_combined_later = defaultdict(list)
+# cka_score_combined_later = defaultdict(list)
 #%%
 from itertools import combinations
 from itertools import combinations_with_replacement
-
+from itertools import product
 layers_names = keys.copy()
 layers_names.append('output')
 
-combinations_2 = list(combinations_with_replacement(layers_names, 2))
+# combinations_2 = list(combinations_with_replacement(layers_names, 2))
+combinations_2 = list(product(layers_names, repeat=2))
 #%%
 scores = []
-combinations_2 = [('output', 'output')]
+# combinations_2 = ['output', 'output']
 #%%
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
-        if k<10:
+        if k<25:
             images, labels = data[0].to(device), data[1].to(device)
             activation_model1_all = get_activation_model(backbone, images)
             outputs_1 = backbone(images)
@@ -335,7 +290,7 @@ with torch.no_grad():
             outputs_2 = outputs_2.last_hidden_state
             activation_model2_all['output'] = outputs_2
 
-            for ii, (layer1,layer2) in enumerate(combinations_2):
+            for i, (layer1,layer2) in enumerate(combinations_2):
                 # print('='*50)
             # for j, layer2 in enumerate(keys):
                 # print(layer1, layer2)
@@ -351,92 +306,240 @@ with torch.no_grad():
                 # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1).cpu().numpy()
                 activation_model2_flatten = activation_model2.cpu().numpy()
                 activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(2,3))
-                 #TODO use a for loop before linear cka
-                # scores = []
-                dimension_array = activation_model1_flatten.shape[1]
-                # dimension_array = 10
-                cross_Score = np.zeros((dimension_array, dimension_array))
-                batch_scores = []
-                for i in range(0,activation_model2_flatten.shape[1]):
-                    for j in range(0,activation_model1_flatten.shape[1]):
-                        map_backbone_1 = activation_model1_flatten[:,i,:,:]
-                        map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
 
-                        maps_backbone_2 = activation_model2_flatten[:,j,:,:]
-                        # maps_backbone_2 = np.random.random(maps_backbone_2.shape)
-                        maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
-                    
-                        this_score = linear_CKA(map_backbone_1_reshaped,
-                                                                maps_backbone_2_reshaped)
-                        cross_Score[i][j] = this_score
+                # this_score = linear_CKA(activation_model1_flatten_np,
+                #                                         activation_model2_flatten_np)
+                # score2 = cka(gram_linear(activation_model1_flatten_np), gram_linear(activation_model2_flatten_np))
+                # score3 = feature_space_linear_cka(activation_model1_flatten_np, activation_model2_flatten_np)
+                # score_4 = cka(gram_linear(activation_model1_flatten_np), gram_linear(activation_model2_flatten_np), debiased=True)
+                # # score_5 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+                # score_5 = feature_space_linear_cka(activation_model1_flatten_np, activation_model2_flatten_np, debiased=True)
+                # score6 = cka(gram_rbf(activation_model1_flatten_np, 0.4), gram_rbf(activation_model2_flatten_np, 0.4))
+                # score7 = cka(gram_rbf(activation_model1_flatten_np, 0.4), gram_rbf(activation_model2_flatten_np, 0.4), debiased=True)
+                # score8 = cca(activation_model1_flatten_np, activation_model2_flatten_np)  
 
-                scores.append(cross_Score)
- 
-#%%
-# Convert the list of 2D arrays to a 3D array
-scores_3d = np.stack(scores)         
-#%%    
-loading = False
-if loading==False:
-    mean_matrix = np.mean(scores_3d, axis=0)
-    std_matrix = np.std(scores_3d, axis=0)
-    np.savez('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer_random_v3.npz', mean_matrix=mean_matrix, std_matrix=std_matrix)
-else:
-    data = np.load('/scratch/pterway/slivit/SLIViT/analysisStores/matrix_data_middle_layer_random.npz')
-    mean_matrix = data['mean_matrix']
-    std_matrix = data['std_matrix']
-#%%
-# fing the 10 highest indices across the diagonals of mean_matrix
-# Get the diagonal values of the matrix
-diagonal_values = np.diag(mean_matrix)
+                # this_score = kernel_CKA(activation_model1_flatten_np,
+                #                                             activation_model2_flatten_np)
+                this_score = cca(activation_model1_flatten_np, activation_model2_flatten_np)  
 
-# Sort the diagonal values in descending order and get the indices
-sorted_indices = np.argsort(diagonal_values)[::-1]
+                # print(this_score)
+                # avg_acts1 = np.mean(activation_model1, axis=(1,2))
+                # avg_acts2 = np.mean(activation_model2, axis=(1,2))
+                # layer_activations[layer1].append(activation_model1_flatten_np)
+                # layer_activations[layer2].append(activation_model2_flatten_np)
+                layer_activations[(layer1,layer2)].append((activation_model1_flatten_np, activation_model2_flatten_np))
 
-# Get the top 10 indices
-top_10_indices = sorted_indices[:10]
+                cka_score[(layer1,layer2)].append(this_score)
+
+                # if layer1 != layer2:
+                #     cka_score[(layer2,layer1)].append(this_score)
+
+        
 #%%
-# subset_mean = mean_matrix[top_10_indices,top_10_indices]
-subset_mean = mean_matrix[top_10_indices][:, top_10_indices]
+cka_score_combined_later = {}
+for ii, (layer1,layer2) in tqdm(enumerate(combinations_2)):    
+    if not (layer1=='output' or layer2=='output'):
+        
+        this_layer_activations =  layer_activations[(layer1,layer2)]    
+        model_1_activation = np.concatenate([this_layer_activations[i][0] for i in range(len(this_layer_activations))])
+        model_2_activation = np.concatenate([this_layer_activations[i][1] for i in range(len(this_layer_activations))]) 
+        # this_score = kernel_CKA(model_1_activation, model_2_activation)
+        this_score =feature_space_linear_cka(model_1_activation, model_2_activation, debiased=True)
+        cka_score_combined_later[(layer1,layer2)] = this_score
+    # if layer1 != layer2:
+    #     cka_score_combined_later[(layer2,layer1)].append(this_score)
+    #     cka_score_combined_later[(layer1,layer2)].append(this_score)   
+    # else:
+    #     cka_score_combined_later[(layer1,layer2)].append(this_score)        
 #%%
-# make a heatmaps of the mean and std
 import matplotlib.pyplot as plt
 import seaborn as sns
-# Create a heatmap using Seaborn
-plt.figure(figsize=(10, 8))
-vmin, vmax = 0, 1
-# sns.heatmap(mean_matrix[:10,:10], annot=True, fmt=".2f", cmap="YlGnBu",  vmin=vmin, vmax=vmax)
-sns.heatmap(subset_mean, annot=True, fmt=".2f", cmap="YlGnBu",  vmin=vmin, vmax=vmax)
+import numpy as np
 
-# Set the x and y ticks using top_10_indices
-plt.xticks(range(len(top_10_indices)), top_10_indices)
-plt.yticks(range(len(top_10_indices)), top_10_indices)
+# Your data
+data = cka_score_combined_later
 
-plt.xlabel('Feature number')
-plt.ylabel('Feature number')
-plt.title('Heatmap of Mean Matrix')
-plt.show()
-#%%
-# Create a heatmap using Seaborn
-subset_std = std_matrix[top_10_indices][:, top_10_indices]
+# Extract keys, values
+keys = list(data.keys())
+values = [val for val in data.values()]
 
-plt.figure(figsize=(10, 8))
-vmin, vmax = 0, 1
-# sns.heatmap(mean_matrix[:10,:10], annot=True, fmt=".2f", cmap="YlGnBu",  vmin=vmin, vmax=vmax)
-sns.heatmap(subset_std, annot=True, fmt=".2f", cmap="YlGnBu",  vmin=vmin, vmax=vmax)
+# Create a 2D numpy array for the heatmap
+num_keys = len(keys)
+heatmap_data = np.zeros((num_keys, num_keys))
 
-# Set the x and y ticks using top_10_indices
-plt.xticks(range(len(top_10_indices)), top_10_indices)
-plt.yticks(range(len(top_10_indices)), top_10_indices)
+for i in range(num_keys):
+    for j in range(num_keys):
+        heatmap_data[i, j] = values[keys.index((keys[i][0], keys[j][1]))]
 
-plt.xlabel('Feature number')
-plt.ylabel('Feature number')
-plt.title('Heatmap of Mean Matrix')
+# Set up the heatmap using seaborn
+sns.set()
+plt.figure(figsize=(10*2, 8*2))
+ax = sns.heatmap(heatmap_data, annot=True,fmt=".2f", cmap='viridis', xticklabels=keys, yticklabels=keys)
+
+# Rotate the tick labels for better visibility
+plt.xticks(rotation=45, ha='right')
+plt.yticks(rotation=0)
+
+plt.title('2D Heatmap')
 plt.show()
 
+# In[]
+# make a heat map of the activations
+import numpy as np
+cka_score_mean = {}
+cka_score_std = {}
+cka_score_combined_later_mean = {}
+for key in cka_score.keys():
+    cka_list = cka_score[key]
+    mean_value = np.mean(cka_list)
+    std_value = np.std(cka_list)
+    cka_score_mean[key] = mean_value
+    cka_score_std[key] = std_value
+    cka_score_combined_later_mean[key] = cka_score_combined_later[key][0]
+
 
 #%%
+import matplotlib.pyplot as plt
+import seaborn as sns
+data = dict(cka_score_mean)
+# Extract unique keys for X and Y axes
+x_keys = sorted(set(key[0] for key in data.keys()))
+y_keys = sorted(set(key[1] for key in data.keys()))
 
+# Create a matrix to store the values
+matrix = np.zeros((len(y_keys), len(x_keys)))
+
+# Fill the matrix with the corresponding values from the dictionary
+for i, y_key in enumerate(y_keys):
+    for j, x_key in enumerate(x_keys):
+        matrix[i, j] = data.get((x_key, y_key), 0.0)
+# Specify the color bar range (vmin and vmax)
+vmin, vmax = 0, 1
+# Create a heatmap using seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
+# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
+plt.xlabel('Model 1')
+plt.ylabel('Model 2')
+plt.title('Mean')
+plt.show()
+#%%
+data = dict(cka_score_std)
+# Extract unique keys for X and Y axes
+x_keys = sorted(set(key[0] for key in data.keys()))
+y_keys = sorted(set(key[1] for key in data.keys()))
+
+# Create a matrix to store the values
+matrix = np.zeros((len(y_keys), len(x_keys)))
+
+# Fill the matrix with the corresponding values from the dictionary
+for i, y_key in enumerate(y_keys):
+    for j, x_key in enumerate(x_keys):
+        matrix[i, j] = data.get((x_key, y_key), 0.0)
+vmin, vmax = 0, .4
+# Create a heatmap using seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
+
+# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
+plt.xlabel('Model 1')
+plt.ylabel('Model 2')
+plt.title('Standard deviation')
+plt.show()
+#%%
+data = dict(cka_score_combined_later_mean)
+# Extract unique keys for X and Y axes
+x_keys = sorted(set(key[0] for key in data.keys()))
+y_keys = sorted(set(key[1] for key in data.keys()))
+
+# Create a matrix to store the values
+matrix = np.zeros((len(y_keys), len(x_keys)))
+
+# Fill the matrix with the corresponding values from the dictionary
+for i, y_key in enumerate(y_keys):
+    for j, x_key in enumerate(x_keys):
+        matrix[i, j] = data.get((x_key, y_key), 0.0)
+# Specify the color bar range (vmin and vmax)
+vmin, vmax = 0, 1
+# Create a heatmap using seaborn
+plt.figure(figsize=(10, 8))
+sns.heatmap(matrix, annot=True, fmt=".2f", cmap="coolwarm", xticklabels=x_keys, yticklabels=y_keys, vmin=vmin, vmax=vmax)
+# sns.heatmap(matrix, annot=True, fmt=".2f", cmap="YlGnBu", xticklabels=x_keys, yticklabels=y_keys)
+plt.xlabel('Model 1')
+plt.ylabel('Model 2')
+plt.title('Mean')
+plt.show()
+# %%
+# import matplotlib.pyplot as plt
+# data = dict(cka_score_mean)
+# layer_names = set()
+
+# for key in data.keys():
+#     layer_names.update(key)
+# n_layers = len(layer_names)
+
+# matrix = np.zeros((n_layers, n_layers))
+# layer_names_list = list(layer_names)
+# for (layer1, layer2), score in data.items():
+#     matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
+# x_labels = layer_names.copy()
+# y_labels = x_labels.copy()
+# plt.figure(figsize=(8, 6))
+# ax = plt.matshow(matrix, cmap='coolwarm')
+
+# # Set ticks and labels
+# plt.xticks(range(len(x_labels)), x_labels, rotation=90)
+# plt.yticks(range(len(y_labels)), y_labels)
+
+# # Add colorbar
+# plt.colorbar()
+# # Set scale of the colorbar to range from 0 to 1
+# plt.clim(0, 1)
+# # Title and labels
+# plt.title("CKA Score Heatmap for the Two ML Models")
+# plt.xlabel("Model 1 Layer")
+# plt.ylabel("Model 2 Layer")
+
+# # Show the plot
+# plt.tight_layout()
+# plt.show() 
+# #%%
+# # %%
+# data = dict(cka_score_std )
+# layer_names = set()
+
+# for key in data.keys():
+#     layer_names.update(key)
+# n_layers = len(layer_names)
+
+# matrix = np.zeros((n_layers, n_layers))
+# layer_names_list = list(layer_names)
+# for (layer1, layer2), score in data.items():
+#     matrix[layer_names_list.index(layer1)][layer_names_list.index(layer2)] = score
+
+# plt.figure(figsize=(8, 6))
+# ax = plt.matshow(matrix, cmap='coolwarm')
+
+# # Set ticks and labels
+# plt.xticks(range(len(x_labels)), x_labels, rotation=45)
+# plt.yticks(range(len(y_labels)), y_labels)
+
+# # Add colorbar
+# plt.colorbar()
+# plt.clim(0, .3)
+# # Title and labels
+# plt.title("CKA Score Heatmap std. dev. for the Two ML Models")
+# plt.xlabel("Model 1 Layer")
+# plt.ylabel("Model 2 Layer")
+
+# # Show the plot
+# plt.tight_layout()
+# plt.show()
+# # %%                   
+# #%%
+# print('done')
+# images, labels = next(iter(dataloader))
+#%%
 # with torch.no_grad():
 #     outputs = backbone(images)
 #     # activation_model1 = get_activation(backbone, images, lname)[layer1]

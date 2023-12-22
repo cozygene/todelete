@@ -29,9 +29,12 @@ from torchvision.transforms import (
     RandomResizedCrop,
     ToTensor,
 )
+from skimage.metrics import structural_similarity
+# from skim import ssim
 import os
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 from CKA import linear_CKA, kernel_CKA
+from CKAGoogle import feature_space_linear_cka, cka, gram_linear, gram_rbf, cca
 #%%
 class pil_contrast_strech(object):
     def __init__(self, low=2, high=98):
@@ -210,10 +213,19 @@ def load_backbone_scratch(path, num_labels=4):
             #     init.xavier_uniform_(param)  # Use xavier_uniform_ for activations like tanh or sigmoid
             # else:  # For 1D tensors (e.g., biases), use a different initialization strategy
             #     init.normal_(param, mean=0.0, std=0.01)  # Example: Normal initialization
-             init.normal_(param, a=-0.05, b=0.05)
+             init.normal_(param, mean = 0.0, std = 0.01)
     return model
 
-
+# def load_backbone_scratch(path, num_labels=4):
+#     from transformers import ConvNextConfig, ConvNextModel
+#     configuration = ConvNextConfig(num_labels=1, num_channels=3)
+#     model2 = ConvNextModel(configuration)
+#     model = ConvNext(model2)
+#     model_tmp = list(model.children())[0]
+#     model_tmp = list(model_tmp.children())
+#     model = torch.nn.Sequential(
+#         model_tmp[0], model_tmp[1], model_tmp[2])
+#     return model
 # %%
 backbone_path = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/Kermany_combined_backbone.pth' 
 # backbone_path_2 = '/scratch/pterway/slivit/backbone/SLIViT_Backbones/MRI_combined_backbone.pth' 
@@ -245,7 +257,10 @@ backbone = load_backbone(backbone_path, num_labels=4)
 # backbone = ConvNextM(backbone)
 backbone.to(device)
 
-backbone_2 = load_backbone(backbone_path_2, num_labels=14)
+backbone_2 = load_backbone_scratch(backbone_path_2, num_labels=14)
+# backbone_2 = ConvNextM(backbone_2)
+#%%
+
 # backbone_2 = load_backbone_scratch(backbone_path, num_labels=4)
 
 # backbone_2 = load_backbone_random(backbone_path_2, num_labels=14)
@@ -321,6 +336,7 @@ combinations_2 = list(combinations_with_replacement(layers_names, 2))
 #%%
 scores = []
 combinations_2 = [('output', 'output')]
+all_features = []
 #%%
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
@@ -346,32 +362,75 @@ with torch.no_grad():
                 # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1).cpu().numpy()
                 activation_model1_flatten = activation_model1.cpu().numpy()
                 activation_model1_flatten_np = np.mean(activation_model1_flatten, axis=(2,3))
+                activation_model1_flatten_pooled = torch.max(activation_model1, dim=1)[0]
+                activation_model1_flatten_pooled_np = activation_model1_flatten_pooled.cpu().numpy()
+
 
                 #TODO use a for loop before linear cka
                 # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1).cpu().numpy()
                 activation_model2_flatten = activation_model2.cpu().numpy()
                 activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(2,3))
+                activation_model2_flatten_pooled = torch.max(activation_model2, dim=1)[0]
+                activation_model2_flatten_pooled_np = activation_model2_flatten_pooled.cpu().numpy()
+
+                all_features.append((activation_model1_flatten_pooled_np, activation_model2_flatten_pooled_np))
+
                  #TODO use a for loop before linear cka
                 # scores = []
                 dimension_array = activation_model1_flatten.shape[1]
                 # dimension_array = 10
                 cross_Score = np.zeros((dimension_array, dimension_array))
                 batch_scores = []
-                for i in range(0,activation_model2_flatten.shape[1]):
-                    for j in range(0,activation_model1_flatten.shape[1]):
-                        map_backbone_1 = activation_model1_flatten[:,i,:,:]
-                        map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
+                # for i in range(0,activation_model2_flatten.shape[1]):
+                #     for j in range(0,activation_model1_flatten.shape[1]):
+                #         map_backbone_1 = activation_model1_flatten[:,i,:,:]
+                #         map_backbone_1_reshaped = map_backbone_1.reshape(map_backbone_1.shape[0], -1)
 
-                        maps_backbone_2 = activation_model2_flatten[:,j,:,:]
-                        # maps_backbone_2 = np.random.random(maps_backbone_2.shape)
-                        maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
+                #         maps_backbone_2 = activation_model2_flatten[:,j,:,:]
+                #         # maps_backbone_2 = np.random.random(maps_backbone_2.shape)
+                #         maps_backbone_2 = maps_backbone_2*np.random.random()
+                #         maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
                     
-                        this_score = linear_CKA(map_backbone_1_reshaped,
-                                                                maps_backbone_2_reshaped)
-                        cross_Score[i][j] = this_score
+                #         this_score = linear_CKA(map_backbone_1_reshaped,
+                #                                                 maps_backbone_2_reshaped)
+                #         score2 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped))
+                #         score3 = feature_space_linear_cka(map_backbone_1_reshaped, maps_backbone_2_reshaped)
+                #         score_4 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+                #         # score_5 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+                #         score_5 = feature_space_linear_cka(map_backbone_1_reshaped, maps_backbone_2_reshaped, debiased=True)
+                #         score6 = cka(gram_rbf(map_backbone_1_reshaped, 0.4), gram_rbf(maps_backbone_2_reshaped, 0.4))
+                #         score7 = cka(gram_rbf(map_backbone_1_reshaped, 0.4), gram_rbf(maps_backbone_2_reshaped, 0.4), debiased=True)
+                #         score8 = cca(map_backbone_1_reshaped, maps_backbone_2_reshaped)
+                #         cross_Score[i][j] = this_score
 
-                scores.append(cross_Score)
- 
+                # scores.append(cross_Score)
+#%%
+feature_backbone_1 = np.concatenate([i[0] for i in all_features], axis=0)
+feature_backbone_2 = np.concatenate([i[1] for i in all_features], axis=0)      
+map_backbone_1_reshaped = feature_backbone_1.reshape(feature_backbone_1.shape[0], -1)
+maps_backbone_2_reshaped = feature_backbone_2.reshape(feature_backbone_2.shape[0], -1)
+#%%
+this_score = linear_CKA(map_backbone_1_reshaped,
+                                        maps_backbone_2_reshaped)
+score2 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped))
+score3 = feature_space_linear_cka(map_backbone_1_reshaped, maps_backbone_2_reshaped)
+score_4 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+# score_5 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+score_5 = feature_space_linear_cka(map_backbone_1_reshaped, maps_backbone_2_reshaped, debiased=True)
+score6 = cka(gram_rbf(map_backbone_1_reshaped, 0.4), gram_rbf(maps_backbone_2_reshaped, 0.4))
+score7 = cka(gram_rbf(map_backbone_1_reshaped, 0.4), gram_rbf(maps_backbone_2_reshaped, 0.4), debiased=True)
+score8 = cca(map_backbone_1_reshaped, maps_backbone_2_reshaped)   
+#%%
+ss_scores = []
+for ll in range(feature_backbone_1.shape[0]):
+    image1 = feature_backbone_1[ll]
+    image1_scaled = (image1 - np.min(image1)) / (np.max(image1) - np.min(image1))
+    image2 = feature_backbone_2[ll]
+    image2_scaled = (image2 - np.min(image2)) / (np.max(image2) - np.min(image2))
+    ss_scores.append(structural_similarity(image1, image2, data_range=image1.max() - image1.min()))
+ss_scores_array = np.array(ss_scores)
+print(np.mean(ss_scores_array))
+#%%
 #%%
 # Convert the list of 2D arrays to a 3D array
 scores_3d = np.stack(scores)         

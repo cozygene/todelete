@@ -32,6 +32,7 @@ from torchvision.transforms import (
 import os
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 from CKA import linear_CKA, kernel_CKA
+from CKAGoogle import feature_space_linear_cka, cka, gram_linear, gram_rbf, cca
 #%%
 class pil_contrast_strech(object):
     def __init__(self, low=2, high=98):
@@ -321,6 +322,7 @@ combinations_2 = list(combinations_with_replacement(layers_names, 2))
 #%%
 scores = []
 combinations_2 = [('output', 'output')]
+all_features = []
 #%%
 with torch.no_grad():
     for k, data in tqdm(enumerate(dataloader)):
@@ -346,11 +348,19 @@ with torch.no_grad():
                 # activation_model1_flatten = activation_model1.reshape(activation_model1.size(0), -1).cpu().numpy()
                 activation_model1_flatten = activation_model1.cpu().numpy()
                 activation_model1_flatten_np = np.mean(activation_model1_flatten, axis=(2,3))
+                activation_model1_flatten_pooled = torch.max(activation_model1, dim=1)[0]
+                activation_model1_flatten_pooled_np = activation_model1_flatten_pooled.cpu().numpy()
+
 
                 #TODO use a for loop before linear cka
                 # activation_model2_flatten = activation_model2.reshape(activation_model2.size(0), -1).cpu().numpy()
                 activation_model2_flatten = activation_model2.cpu().numpy()
                 activation_model2_flatten_np = np.mean(activation_model2_flatten, axis=(2,3))
+                activation_model2_flatten_pooled = torch.max(activation_model2, dim=1)[0]
+                activation_model2_flatten_pooled_np = activation_model2_flatten_pooled.cpu().numpy()
+
+                all_features.append((activation_model1_flatten_np, activation_model2_flatten_np))
+
                  #TODO use a for loop before linear cka
                 # scores = []
                 dimension_array = activation_model1_flatten.shape[1]
@@ -364,10 +374,19 @@ with torch.no_grad():
 
                         maps_backbone_2 = activation_model2_flatten[:,j,:,:]
                         # maps_backbone_2 = np.random.random(maps_backbone_2.shape)
+                        maps_backbone_2 = maps_backbone_2*np.random.random()
                         maps_backbone_2_reshaped = maps_backbone_2.reshape(maps_backbone_2.shape[0], -1)
                     
                         this_score = linear_CKA(map_backbone_1_reshaped,
                                                                 maps_backbone_2_reshaped)
+                        score2 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped))
+                        score3 = feature_space_linear_cka(map_backbone_1_reshaped, maps_backbone_2_reshaped)
+                        score_4 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+                        # score_5 = cka(gram_linear(map_backbone_1_reshaped), gram_linear(maps_backbone_2_reshaped), debiased=True)
+                        score_5 = feature_space_linear_cka(map_backbone_1_reshaped, maps_backbone_2_reshaped, debiased=True)
+                        score6 = cka(gram_rbf(map_backbone_1_reshaped, 0.4), gram_rbf(maps_backbone_2_reshaped, 0.4))
+                        score7 = cka(gram_rbf(map_backbone_1_reshaped, 0.4), gram_rbf(maps_backbone_2_reshaped, 0.4), debiased=True)
+                        score8 = cca(map_backbone_1_reshaped, maps_backbone_2_reshaped)
                         cross_Score[i][j] = this_score
 
                 scores.append(cross_Score)
