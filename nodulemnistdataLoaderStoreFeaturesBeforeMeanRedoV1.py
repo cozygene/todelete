@@ -156,7 +156,7 @@ from medmnist import NoduleMNIST3D
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
 # Iterate over the dataloader to get one image per folder
 # for images, labels in dataloader:
 #     # Process the images as needed
