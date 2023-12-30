@@ -183,8 +183,12 @@ class ResNet3D(nn.Module):
     def __init__(self, num_classes):
         super(ResNet3D, self).__init__()
         # self.resnet = models.video.r3d_18(pretrained=True)
-        self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
-                                   )
+        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
+        #                            )
+        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
+        #                            )
+        self.resnet = models.video.r3d_18(pretrained=True)
+        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
         # num_features = self.resnet.fc.in_features
         # num_features = 400
         # self.resnet.fc = nn.Linear(num_features, num_classes)
@@ -222,13 +226,13 @@ from fastai.callback.tracker import EarlyStoppingCallback
 import wandb
 wandb.init(project="slivit")
 #%%
-# dls = DataLoaders(dataloader, dataloader_validation)
-dls = DataLoaders(dataloader_validation, dataloader_validation)
+dls = DataLoaders(dataloader, dataloader_validation)
+# dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
-
+save_model_name = 'ResNet18Pretrain'
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
-                  cbs=[WandbCallback(), EarlyStoppingCallback(patience=3)],
+                  cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
 
 fp16 = MixedPrecision()
@@ -237,7 +241,7 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-save_model_name = 'ResNet50Scratch'
+
 print('Saving model as: ', save_model_name)
 learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%

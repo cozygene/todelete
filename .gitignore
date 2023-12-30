@@ -3,3 +3,4 @@ __pycache__/
 analysisStores/
 wandb/
 *.pth
+*.txt

@@ -22,3 +22,17 @@ Feel free to <a href="mailto:orenavram@gmail.com,berkin1997@g.ucla.edu?subject=A
 
 
 
+### Jobs  Berkin
+
+[1]+  Stopped                 screen -S slivitwork
+(slivit) pterway@halperingpu01:/scratch/pterway/slivit$ screen -r slivitwork
+
+[2]+  Stopped                 screen -r slivitwork
+
+Kill
+
+screen -S slivitwork X
+
+gpustat -up
+
+screen -X -S 783375.slivitwork quit

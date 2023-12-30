@@ -222,13 +222,13 @@ from fastai.callback.tracker import EarlyStoppingCallback
 import wandb
 wandb.init(project="slivit")
 #%%
-# dls = DataLoaders(dataloader, dataloader_validation)
-dls = DataLoaders(dataloader_validation, dataloader_validation)
+dls = DataLoaders(dataloader, dataloader_validation)
+# dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
 
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
-                  cbs=[WandbCallback(), EarlyStoppingCallback(patience=3)],
+                  cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
 
 fp16 = MixedPrecision()
