@@ -128,9 +128,9 @@ class NoduleMNISTDataset(Dataset):
         #t_imgs = torch.cat([self.transform(im) for im in imgs], dim=1)
 
         
+        # return torch.FloatTensor(t_image), torch.FloatTensor(label)
 
-
-        return torch.FloatTensor(t_image), torch.squeeze(torch.FloatTensor(label))
+        return torch.FloatTensor(t_image), torch.squeeze(torch.LongTensor(label))
 
 #%%
 from torch.utils.data import DataLoader
@@ -164,11 +164,12 @@ print("Input shape:", inputs.shape)
 print("Labels shape:", labels.shape)
 #%%    
 
-model = ViViT(224, 16, 1, 28).cuda()
+model = ViViT(224, 16, 2, 28).cuda()
 
 forward = model(inputs.cuda())
 
-criteria = nn.BCEWithLogitsLoss()
+# criteria = nn.BCEWithLogitsLoss()
+criteria = nn.CrossEntropyLoss()
 loss = criteria(forward, labels.cuda())
 loss.backward()
 
@@ -185,16 +186,16 @@ loss.backward()
 
 #%%
 # Create a grid search for dim [] and depth
-dim_head = 32
-depth = 1
+dim_head = 64
+depth = 4
 model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head).cuda()
 
 #%%
 # Define the loss function and optimizer
 import torch.optim as optim
-criterion = nn.BCEWithLogitsLoss()
-# optimizer = optim.Adam(model.parameters())
-optimizer = optim.RMSprop(model.parameters(), lr = 0.00001)
+# criterion = nn.BCEWithLogitsLoss()
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters())
 #%%
 from tqdm import tqdm
 #%%
@@ -218,7 +219,7 @@ for epoch in range(num_epochs):
     with tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs} - Training") as pbar:
         for inputs, labels in pbar:
             inputs = inputs.cuda()
-            labels = labels.cuda()
+            labels = labels.float().cuda()
 
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -239,10 +240,11 @@ for epoch in range(num_epochs):
         with tqdm(dataloader_validation, desc=f"Epoch {epoch+1}/{num_epochs} - Validation") as pbar:
             for inputs, labels in pbar:
                 inputs = inputs.cuda()
-                labels = labels.cuda()
+                labels = labels.float().cuda()
 
                 outputs = model(inputs)
-                predicted = torch.round(torch.sigmoid(outputs))
+                # predicted = torch.round(torch.sigmoid(outputs))
+                predicted = torch.argmax(outputs, dim=1)
                 total_samples += labels.size(0)
                 total_correct += (predicted == labels).sum().item()
                 this_val_loss = criterion(outputs, labels)
