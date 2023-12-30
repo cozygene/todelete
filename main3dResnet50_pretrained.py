@@ -239,7 +239,9 @@ learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # Fit
 save_model_name = 'ResNet50Pretrained'
 print('Saving model as: ', save_model_name)
-learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
+enable_train = False
+if enable_train:
+    learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%
 t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
         #print ('Required Task has Started')
@@ -272,6 +274,46 @@ for i in range(100):
         auc_scores[i, k] = sklearn.metrics.roc_auc_score(t_labels, preds)
 print(np.mean(auprc_scores, axis=0))
 print(np.mean(auc_scores, axis=0))
+#%%
+import matplotlib.pyplot as plt
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+
+# Create box plots for auc_scores
+ax1.boxplot(auc_scores, labels=['AUC Scores'], notch=True, sym='')
+
+# Set y-axis label for auc_scores
+ax1.set_ylabel('Scores')
+
+# Set title for auc_scores
+ax1.set_title('Box Plot of AUC Scores')
+
+# Create box plots for auprc_scores
+ax2.boxplot(auprc_scores, labels=['AUPRC Scores'], notch=True, sym='')
+
+# Set y-axis label for auprc_scores
+ax2.set_ylabel('Scores')
+
+# Set title for auprc_scores
+ax2.set_title('Box Plot of AUPRC Scores')
+
+# Adjust spacing between subplots
+plt.subplots_adjust(wspace=0.5)
+# Set main title
+fig.suptitle(save_model_name)
+# plt.title(save_model_name)
+# Show the plot
+# Save the figure as an image file
+fig.savefig(save_model_name + '.png')
+plt.show()
+#%%
+# Define the file path
+file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'
+data = {
+    'auc_scores': np.array(auc_scores),
+    'auprc_scores': np.array(auprc_scores)
+}
+# Save the data as an npz file
+np.savez(file_path, **data)
 #%%
 # create a box plot with confidence intervals
 #%%

@@ -187,7 +187,7 @@ class ResNet3D(nn.Module):
         #                            )
         # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
         #                            )
-        self.resnet = models.video.r3d_18(pretrained=True)
+        self.resnet = models.video.r3d_18(pretrained=False)
         # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
         # num_features = self.resnet.fc.in_features
         # num_features = 400
@@ -230,9 +230,7 @@ dls = DataLoaders(dataloader, dataloader_validation)
 # dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
-save_model_name = 'ResNet18Pretrain'
-
-
+save_model_name = 'ResNet18Scratch'
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
                   cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
@@ -311,15 +309,6 @@ fig.suptitle(save_model_name)
 # Save the figure as an image file
 fig.savefig(save_model_name + '.png')
 plt.show()
-#%%
-# Define the file path
-file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'
-data = {
-    'auc_scores': np.array(auc_scores),
-    'auprc_scores': np.array(auprc_scores)
-}
-# Save the data as an npz file
-np.savez(file_path, **data)
 #%%
 # create a box plot with confidence intervals
 #%%

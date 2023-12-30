@@ -4,3 +4,4 @@ analysisStores/
 wandb/
 *.pth
 *.txt
+npzfiles/

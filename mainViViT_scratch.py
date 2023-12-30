@@ -127,10 +127,11 @@ class NoduleMNISTDataset(Dataset):
         # return t_imgs, label
         #t_imgs = torch.cat([self.transform(im) for im in imgs], dim=1)
 
-        t_image = t_image.permute(1,0,2,3)
+        
 
 
         return torch.FloatTensor(t_image), torch.squeeze(torch.FloatTensor(label))
+
 
 #%%
 from torch.utils.data import DataLoader
@@ -206,8 +207,14 @@ class ResNet3D(nn.Module):
 #%%    
 
 # model = ViViT(224, 16, 1, 28).cuda()
-num_classes = 1
-model = ResNet3D(num_classes)
+# num_classes = 1
+# model = ResNet3D(num_classes)
+
+#%%
+dim_head = 64
+depth = 4
+model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
+
 
 model = model.cuda()
 
@@ -230,7 +237,7 @@ dls = DataLoaders(dataloader, dataloader_validation)
 # dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
-save_model_name = 'ResNet18Pretrain'
+save_model_name = 'ViVitPretrain'
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
                   cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
@@ -241,9 +248,10 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-
+train_enable = False
 print('Saving model as: ', save_model_name)
-learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
+if train_enable:
+    learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%
 t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
         #print ('Required Task has Started')
@@ -276,6 +284,50 @@ for i in range(100):
         auc_scores[i, k] = sklearn.metrics.roc_auc_score(t_labels, preds)
 print(np.mean(auprc_scores, axis=0))
 print(np.mean(auc_scores, axis=0))
+
+#%%
+# Create a figure and axes
+# Create a figure and axes
+import matplotlib.pyplot as plt
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+
+# Create box plots for auc_scores
+ax1.boxplot(auc_scores, labels=['AUC Scores'], notch=True, sym='')
+
+# Set y-axis label for auc_scores
+ax1.set_ylabel('Scores')
+
+# Set title for auc_scores
+ax1.set_title('Box Plot of AUC Scores')
+
+# Create box plots for auprc_scores
+ax2.boxplot(auprc_scores, labels=['AUPRC Scores'], notch=True, sym='')
+
+# Set y-axis label for auprc_scores
+ax2.set_ylabel('Scores')
+
+# Set title for auprc_scores
+ax2.set_title('Box Plot of AUPRC Scores')
+
+# Adjust spacing between subplots
+plt.subplots_adjust(wspace=0.5)
+# Set main title
+fig.suptitle(save_model_name)
+# plt.title(save_model_name)
+# Show the plot
+# Save the figure as an image file
+fig.savefig(save_model_name + '.png')
+plt.show()
+#%%
+#%%
+# Define the file path
+file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'
+data = {
+    'auc_scores': np.array(auc_scores),
+    'auprc_scores': np.array(auprc_scores)
+}
+# Save the data as an npz file
+np.savez(file_path, **data)
 #%%
 # create a box plot with confidence intervals
 #%%
