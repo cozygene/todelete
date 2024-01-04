@@ -54,7 +54,7 @@ transform_new = tf.Compose(
     [
         ToTensor(),
         tf.ToPILImage(),
-        tf.Resize((224, 224)),
+        tf.Resize((128, 128)),
         pil_contrast_strech(),
         #RandomResizedCrop((256,256)),
         #RandomHorizontalFlip(),
@@ -97,6 +97,8 @@ from medmnist import OrganMNIST3D
 #         return t_imgs, label
 
 #%%
+import torch.nn.functional as F
+
 class NoduleMNISTDataset(Dataset):
     def __init__(self, dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
                                                split='train', download=True),
@@ -115,12 +117,14 @@ class NoduleMNISTDataset(Dataset):
         # # concatenate the image
         #imgs = [image[0, i] for i in range(image.shape[1])]
         # t_imgs = torch.cat([torch.FloatTensor(transform_new(im)) for im in imgs], dim=1)
-        t_image = torch.zeros((28,3,224, 224))
+        t_image = torch.zeros((28,3,128, 128))
         for j in range(28):
             
             t_image[j,:,:,:]=transform_new(image[0,j,:,:])
 
+        # upsampled_t_image = F.interpolate(t_image, size=(48, 3, 128, 128), mode='nearest')
        #x=5
+
     
         #transformed_image = transform_new(t_imgs)
         #
@@ -163,6 +167,12 @@ inputs, labels = first_batch
 print("Input shape:", inputs.shape)
 print("Labels shape:", labels.shape)
 
+
+#%%
+from MiT_new import model_small, model_tiny
+
+model = model_small(norm_cfg3D='IN3', activation_cfg='LeakyReLU', img_size3D=[48, 128, 128], num_classes=1,
+                        pretrain=True, pretrain_path='/scratch/pterway/slivit/SLIViT/unimiss_small.pth')
 #%%
 # Define the 3D ResNet model
 # import torchvision.models as models
@@ -179,35 +189,35 @@ print("Labels shape:", labels.shape)
 #%%
 # Define the 3D ResNet model
 import torchvision.models as models
-class ResNet3D(nn.Module):
-    def __init__(self, num_classes):
-        super(ResNet3D, self).__init__()
-        # self.resnet = models.video.r3d_18(pretrained=True)
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
-        #                            )
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
-        #                            )
-        self.resnet = models.video.r3d_18(pretrained=False)
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
-        # num_features = self.resnet.fc.in_features
-        # num_features = 400
-        # self.resnet.fc = nn.Linear(num_features, num_classes)
-        # self.activation = nn.GELU()
-        self.activation = nn.ReLU()
-        self.fc = nn.Linear(400, num_classes)
+# class ResNet3D(nn.Module):
+#     def __init__(self, num_classes):
+#         super(ResNet3D, self).__init__()
+#         # self.resnet = models.video.r3d_18(pretrained=True)
+#         # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
+#         #                            )
+#         # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
+#         #                            )
+#         self.resnet = models.video.r3d_18(pretrained=False)
+#         # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
+#         # num_features = self.resnet.fc.in_features
+#         # num_features = 400
+#         # self.resnet.fc = nn.Linear(num_features, num_classes)
+#         # self.activation = nn.GELU()
+#         self.activation = nn.ReLU()
+#         self.fc = nn.Linear(400, num_classes)
 
-    def forward(self, x):
-        resnet_output =  self.activation(self.resnet(x))
-        # remove the sigmoid activation
-        # resnet_output_logits = torch.log(resnet_output/(1-resnet_output))
-        output = self.fc(resnet_output)
+#     def forward(self, x):
+#         resnet_output =  self.activation(self.resnet(x))
+#         # remove the sigmoid activation
+#         # resnet_output_logits = torch.log(resnet_output/(1-resnet_output))
+#         output = self.fc(resnet_output)
 
-        return torch.squeeze(output)
+#         return torch.squeeze(output)
 #%%    
 
 # model = ViViT(224, 16, 1, 28).cuda()
 num_classes = 1
-model = ResNet3D(num_classes)
+# model = ResNet3D(num_classes)
 
 model = model.cuda()
 

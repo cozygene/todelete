@@ -211,7 +211,7 @@ class ResNet3D(nn.Module):
 # model = ResNet3D(num_classes)
 
 #%%
-dim_head = 64
+dim_head = 32
 depth = 4
 model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
 
@@ -249,7 +249,7 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-train_enable = False
+train_enable = True
 print('Saving model as: ', save_model_name)
 if train_enable:
     learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))

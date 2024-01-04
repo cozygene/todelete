@@ -28,10 +28,33 @@ class Transformer(nn.Module):
 
 #%%
 
+import torch
+import torch.nn as nn
+from einops import rearrange, repeat
+from transformer import Transformer
+
 class ViViT(nn.Module):
     def __init__(self, image_size, patch_size, num_classes, num_frames, dim=192, depth=4, heads=3, pool='cls',
                  in_channels=3, dim_head=64, dropout=0.,
                  emb_dropout=0., scale_dim=4, ):
+        """
+        ViViT (Vision + Vision + Transformer) model for 3D classification.
+
+        Args:
+            image_size (int): Size of the input image.
+            patch_size (int): Size of each patch.
+            num_classes (int): Number of output classes.
+            num_frames (int): Number of input frames.
+            dim (int, optional): Dimension of the model. Defaults to 192.
+            depth (int, optional): Depth of the transformer. Defaults to 4.
+            heads (int, optional): Number of attention heads. Defaults to 3.
+            pool (str, optional): Pooling type, either 'cls' (cls token) or 'mean' (mean pooling). Defaults to 'cls'.
+            in_channels (int, optional): Number of input channels. Defaults to 3.
+            dim_head (int, optional): Dimension of each attention head. Defaults to 64.
+            dropout (float, optional): Dropout rate. Defaults to 0.
+            emb_dropout (float, optional): Dropout rate for the embeddings. Defaults to 0.
+            scale_dim (int, optional): Dimension scaling factor. Defaults to 4.
+        """
         super().__init__()
 
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
@@ -60,6 +83,15 @@ class ViViT(nn.Module):
         )
 
     def forward(self, x):
+        """
+        Forward pass of the ViViT model.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (batch_size, num_frames, channels, height, width).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (batch_size, num_classes).
+        """
         x = self.to_patch_embedding(x)
         b, t, n, _ = x.shape
 
