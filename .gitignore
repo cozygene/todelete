@@ -5,3 +5,6 @@ wandb/
 *.pth
 *.txt
 npzfiles/
+diffusionlearn.py
+*.png
+ViVitPretrain_dim192_depth4.png

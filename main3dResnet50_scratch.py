@@ -237,9 +237,9 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-save_model_name = 'ResNet50Scratch'
+save_model_name = 'ResNet50ScratchTest'
 print('Saving model as: ', save_model_name)
-enable_train = False
+enable_train = True
 if enable_train:
     learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%

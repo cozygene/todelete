@@ -213,11 +213,11 @@ class ResNet3D(nn.Module):
 #%%
 # dim_head = 64
 depth = 6
-dim = 192
+dim = 96
 
 # model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
 # default configuration
-model =  ViViT(224, 16, 1, 28)
+model =  ViViT(224, 16, 1, 28, depth = depth, dim = dim)
 
 model = model.cuda()
 

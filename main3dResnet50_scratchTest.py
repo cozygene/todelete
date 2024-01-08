@@ -127,11 +127,10 @@ class NoduleMNISTDataset(Dataset):
         # return t_imgs, label
         #t_imgs = torch.cat([self.transform(im) for im in imgs], dim=1)
 
-        
+        t_image = t_image.permute(1,0,2,3)
 
 
         return torch.FloatTensor(t_image), torch.squeeze(torch.FloatTensor(label))
-
 
 #%%
 from torch.utils.data import DataLoader
@@ -184,12 +183,9 @@ class ResNet3D(nn.Module):
     def __init__(self, num_classes):
         super(ResNet3D, self).__init__()
         # self.resnet = models.video.r3d_18(pretrained=True)
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
-        #                            )
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
-        #                            )
-        self.resnet = models.video.r3d_18(pretrained=True)
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
+        self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
+                                   )
+        
         # num_features = self.resnet.fc.in_features
         # num_features = 400
         # self.resnet.fc = nn.Linear(num_features, num_classes)
@@ -207,17 +203,8 @@ class ResNet3D(nn.Module):
 #%%    
 
 # model = ViViT(224, 16, 1, 28).cuda()
-# num_classes = 1
-# model = ResNet3D(num_classes)
-
-#%%
-# dim_head = 64
-depth = 6
-dim = 192
-
-# model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
-# default configuration
-model =  ViViT(224, 16, 1, 28)
+num_classes = 1
+model = ResNet3D(num_classes)
 
 model = model.cuda()
 
@@ -240,8 +227,7 @@ dls = DataLoaders(dataloader, dataloader_validation)
 # dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
-# save_model_name = 'ViVitPretrain'
-save_model_name = f'ViVitPretrain_dim{dim}_depth{depth}'
+
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
                   cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
@@ -252,9 +238,10 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-train_enable = True
+save_model_name = 'ResNet50ScratchTest'
 print('Saving model as: ', save_model_name)
-if train_enable:
+enable_train = True
+if enable_train:
     learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%
 t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
@@ -290,8 +277,6 @@ print(np.mean(auprc_scores, axis=0))
 print(np.mean(auc_scores, axis=0))
 
 #%%
-# Create a figure and axes
-# Create a figure and axes
 import matplotlib.pyplot as plt
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 
@@ -322,7 +307,6 @@ fig.suptitle(save_model_name)
 # Save the figure as an image file
 fig.savefig(save_model_name + '.png')
 plt.show()
-#%%
 #%%
 # Define the file path
 file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'

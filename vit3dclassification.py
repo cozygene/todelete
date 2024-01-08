@@ -31,7 +31,7 @@ class Transformer(nn.Module):
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
-from transformer import Transformer
+# from transformer import Transformer
 
 class ViViT(nn.Module):
     def __init__(self, image_size, patch_size, num_classes, num_frames, dim=192, depth=4, heads=3, pool='cls',
