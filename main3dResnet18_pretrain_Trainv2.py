@@ -127,11 +127,10 @@ class NoduleMNISTDataset(Dataset):
         # return t_imgs, label
         #t_imgs = torch.cat([self.transform(im) for im in imgs], dim=1)
 
-        
+        t_image = t_image.permute(1,0,2,3)
 
 
         return torch.FloatTensor(t_image), torch.squeeze(torch.FloatTensor(label))
-
 
 #%%
 from torch.utils.data import DataLoader
@@ -150,6 +149,21 @@ dataloader = DataLoader(dataset, batch_size=4, shuffle=True, drop_last=True)
 dataloader_validation = DataLoader(dataset_validation, batch_size=4, shuffle=False, drop_last=True )
 dataloader_test = DataLoader(dataset_test, batch_size=4, shuffle=False, drop_last=True)
 
+#%%
+label_counts = {}
+
+for sample in dataloader:
+    # label = sample['label']
+    label = list(sample[1].numpy())
+    if label in label_counts:
+        label_counts[label] += 1
+    else:
+        label_counts[label] = 1
+
+print("Label Frequencies:")
+for label, count in label_counts.items():
+    print(f"Label {label}: {count} samples")
+#%%
 #%%
 # load the first batch of the data
 
@@ -207,17 +221,8 @@ class ResNet3D(nn.Module):
 #%%    
 
 # model = ViViT(224, 16, 1, 28).cuda()
-# num_classes = 1
-# model = ResNet3D(num_classes)
-
-#%%
-# dim_head = 64
-depth = 4
-dim = 192
-
-# model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
-# default configuration
-model =  ViViT(224, 16, 1, 28, depth = depth)
+num_classes = 1
+model = ResNet3D(num_classes)
 
 model = model.cuda()
 
@@ -240,8 +245,9 @@ dls = DataLoaders(dataloader, dataloader_validation)
 # dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
-# save_model_name = 'ViVitPretrain'
-save_model_name = f'ViVitPretrain_dim{dim}_depth{depth}'
+save_model_name = 'ResNet18Pretrain'
+
+
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
                   cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
@@ -252,19 +258,16 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-train_enable = False
+
 print('Saving model as: ', save_model_name)
-if train_enable:
+enable_train = False
+if enable_train:
     learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%
 t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
         #print ('Required Task has Started')
 valid_loader = dataloader_test
-
-total_samples = len(valid_loader.dataset)
-print("Total number of samples in dataloader_test:", total_samples)
 print(f'# of Test batches is {len(valid_loader)}')
-
 xx1=learner.get_preds(dl=valid_loader)
 #%%
 #%%
@@ -275,13 +278,12 @@ import sklearn
 from sklearn import metrics
 from random import choices
 f_l = torch.stack((act(xx1[0]), xx1[1]), axis=1)
-num_samples = 1000
-auprc_scores = np.zeros((num_samples, 1))
-auc_scores = np.zeros((num_samples, 1))
-tmp = np.zeros((num_samples, 2))
+auprc_scores = np.zeros((100, 1))
+auc_scores = np.zeros((100, 1))
+tmp = np.zeros((600, 2))
 #%%
-for i in range(num_samples):
-    sub_sample = choices(list(f_l), k=total_samples)
+for i in range(100):
+    sub_sample = choices(list(f_l), k=600)
     for j in range(len(sub_sample)): tmp[j, :] = sub_sample[j]
     for k in range(1):
         t_labels = tmp[:, k + 1]  ##tmp[:,k+1]
@@ -293,10 +295,7 @@ for i in range(num_samples):
         auc_scores[i, k] = sklearn.metrics.roc_auc_score(t_labels, preds)
 print(np.mean(auprc_scores, axis=0))
 print(np.mean(auc_scores, axis=0))
-
 #%%
-# Create a figure and axes
-# Create a figure and axes
 import matplotlib.pyplot as plt
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 
@@ -327,7 +326,6 @@ fig.suptitle(save_model_name)
 # Save the figure as an image file
 fig.savefig(save_model_name + '.png')
 plt.show()
-#%%
 #%%
 # Define the file path
 file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'

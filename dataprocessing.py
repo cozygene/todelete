@@ -2,14 +2,15 @@
 # import libraries
 import numpy as np
 # load npz file
-save_model_name = 'ResNet18Scratch'
+# save_model_name = 'ResNet18Scratch'
+save_model_name ='ViVitPretrain_selected_dim96_depth6'
 # save_model_name = 'ViVitPretrain'
 # save_model_name = 'ViVitPretrain_dim96_depth6'
 # /scratch/pterway/slivit/SLIViT/ViVitPretrain_dim192_depth6.pth
 # save_model_name = 'ResNet50Pretrained'
 # save_model_name = 'ResNet50Scratch'
 # save_model_name = 'ResNet18Pretrain'
-
+# SLIViT/npzfiles/ViVitPretrain_selected_dim96_depth6.npz
 # /scratch/pterway/slivit/SLIViT/npzfiles/ViVitPretrain.npz
 # /scratch/pterway/slivit/SLIViT/ViVitPretrain_dim192_depth6.pth
 # /scratch/pterway/slivit/SLIViT/npzfiles/ViVitPretrain_dim192_depth6.npz
@@ -22,16 +23,20 @@ auprc_scores = loaded_data['auprc_scores']
 #%%
 # Assuming auc_scores is a 1D array
 mean_auc = np.mean(auc_scores)
-confidence_interval = np.percentile(auc_scores, [2.5, 97.5])
+# confidence_interval = np.percentile(auc_scores, [2.5, 97.5])
+confidence_interval = np.percentile(auc_scores, [5, 95])
+
 
 print("Mean:", mean_auc)
-print("Confidence Interval (95%):", confidence_interval)
+print("Confidence Interval (90%):", confidence_interval)
 
 #%%
 mean_auprc = np.mean(auprc_scores)
-confidence_interval_auprc = np.percentile(auprc_scores, [2.5, 97.5])
+# confidence_interval_auprc = np.percentile(auprc_scores, [2.5, 97.5])
+confidence_interval_auprc = np.percentile(auprc_scores, [5., 95.0])
+
 print("Mean:", mean_auprc)
-print("Confidence Interval (95%):", confidence_interval_auprc)
+print("Confidence Interval (90%):", confidence_interval_auprc)
 
 # %%
 ########## ViVIT Results ############

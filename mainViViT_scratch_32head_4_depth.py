@@ -249,14 +249,16 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-train_enable = True
+train_enable = False
 print('Saving model as: ', save_model_name)
 if train_enable:
     learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%
 t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
         #print ('Required Task has Started')
-valid_loader = dataloader_test
+# valid_loader = dataloader_test
+valid_loader = dataloader_validation
+
 print(f'# of Test batches is {len(valid_loader)}')
 xx1=learner.get_preds(dl=valid_loader)
 #%%
@@ -322,7 +324,7 @@ plt.show()
 #%%
 #%%
 # Define the file path
-file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'
+file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '_valid_.npz'
 data = {
     'auc_scores': np.array(auc_scores),
     'auprc_scores': np.array(auprc_scores)

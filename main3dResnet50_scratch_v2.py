@@ -8,7 +8,7 @@
 import gc
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # GPU ID
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # GPU ID
 #%%
 import numpy as np
 import pandas as pd
@@ -23,7 +23,7 @@ sys.path.append('/scratch/pterway/slivit/SLIViT')
 from CKAGoogle import feature_space_linear_cka, cka, gram_linear, gram_rbf, cca
 from vit3dclassification import ViViT
 from auxiliaries import *
-
+from torch.utils.data import random_split
 from batchgenerators.transforms.spatial_transforms import SpatialTransform, MirrorTransform
 from batchgenerators.transforms.color_transforms import BrightnessMultiplicativeTransform, GammaTransform, \
     BrightnessTransform, ContrastAugmentationTransform
@@ -127,35 +127,57 @@ class NoduleMNISTDataset(Dataset):
         # return t_imgs, label
         #t_imgs = torch.cat([self.transform(im) for im in imgs], dim=1)
 
-        
+        t_image = t_image.permute(1,0,2,3)
 
 
         return torch.FloatTensor(t_image), torch.squeeze(torch.FloatTensor(label))
 
-
 #%%
+# from torch.utils.data import DataLoader
+# # check if the dataloader works by sampling a batch
+# dataset = NoduleMNISTDataset()
+
+# dataset_validation = NoduleMNISTDataset(dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
+#                                                split='val', download=True),
+#                                                 transform=transform_new  )
+# dataset_test = NoduleMNISTDataset(dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
+#                                                split='test', download=True),
+#                                                 transform=transform_new  )
+
+# dataloader = DataLoader(dataset, batch_size=4, shuffle=True, drop_last=True)
+
+# dataloader_validation = DataLoader(dataset_validation, batch_size=4, shuffle=False, drop_last=True )
+# dataloader_test = DataLoader(dataset_test, batch_size=4, shuffle=False, drop_last=True)
+
 from torch.utils.data import DataLoader
 # check if the dataloader works by sampling a batch
 dataset = NoduleMNISTDataset()
+# Define the train/validation split ratio
+train_ratio = 0.8
+validation_ratio = 0.2
 
-dataset_validation = NoduleMNISTDataset(dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
-                                               split='val', download=True),
-                                                transform=transform_new  )
-dataset_test = NoduleMNISTDataset(dataset= NoduleMNIST3D(root='/scratch/pterway/slivit/datasets',
-                                               split='test', download=True),
-                                                transform=transform_new  )
+# Calculate the number of samples for each split
+num_samples = len(dataset)
+train_size = int(train_ratio * num_samples)
+validation_size = num_samples - train_size
 
-dataloader = DataLoader(dataset, batch_size=4, shuffle=True, drop_last=True)
+# Set the random seed for reproducibility
+seed = 42
+torch.manual_seed(seed)
 
-dataloader_validation = DataLoader(dataset_validation, batch_size=4, shuffle=False, drop_last=True )
-dataloader_test = DataLoader(dataset_test, batch_size=4, shuffle=False, drop_last=True)
+# Split the dataset into train and validation sets
+train_dataset, validation_dataset = random_split(dataset, [train_size, validation_size])
 
+# Create the train and validation dataloaders
+batch_size = 4
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 #%%
 # load the first batch of the data
 
 
 # Load the first batch of data
-first_batch = next(iter(dataloader))
+first_batch = next(iter(train_dataloader))
 
 # Access the input data and labels
 inputs, labels = first_batch
@@ -184,12 +206,8 @@ class ResNet3D(nn.Module):
     def __init__(self, num_classes):
         super(ResNet3D, self).__init__()
         # self.resnet = models.video.r3d_18(pretrained=True)
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
-        #                            )
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
-        #                            )
-        self.resnet = models.video.r3d_18(pretrained=True)
-        # self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'resnet18', pretrained=False,
+        self.resnet = torch.hub.load('facebookresearch/pytorchvideo', 'slow_r50', pretrained=False,
+                                   )
         # num_features = self.resnet.fc.in_features
         # num_features = 400
         # self.resnet.fc = nn.Linear(num_features, num_classes)
@@ -207,17 +225,8 @@ class ResNet3D(nn.Module):
 #%%    
 
 # model = ViViT(224, 16, 1, 28).cuda()
-# num_classes = 1
-# model = ResNet3D(num_classes)
-
-#%%
-# dim_head = 64
-depth = 4
-dim = 192
-
-# model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
-# default configuration
-model =  ViViT(224, 16, 1, 28, depth = depth)
+num_classes = 1
+model = ResNet3D(num_classes)
 
 model = model.cuda()
 
@@ -236,12 +245,12 @@ from fastai.callback.tracker import EarlyStoppingCallback
 import wandb
 wandb.init(project="slivit")
 #%%
-dls = DataLoaders(dataloader, dataloader_validation)
+# dls = DataLoaders(dataloader, dataloader_validation)
+dls = DataLoaders(train_dataloader, validation_dataloader)
 # dls = DataLoaders(dataloader_validation, dataloader_validation)
 
 dls.c = 2
-# save_model_name = 'ViVitPretrain'
-save_model_name = f'ViVitPretrain_dim{dim}_depth{depth}'
+
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
                   cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
@@ -252,91 +261,83 @@ fp16 = MixedPrecision()
 learner.metrics = [ RocAucMulti(average=None), APScoreMulti(average=None)]
 # print('Searching for learning rate...')   
 # Fit
-train_enable = False
+save_model_name = 'ResNet50scratch_v2'
 print('Saving model as: ', save_model_name)
-if train_enable:
+enable_train = True
+if enable_train:
     learner.fit_one_cycle(n_epoch=50, cbs=SaveModelCallback(fname=save_model_name))
 #%%
-t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
-        #print ('Required Task has Started')
-valid_loader = dataloader_test
+# t_model=learner.load('/scratch/pterway/slivit/SLIViT/'+save_model_name)
+#         #print ('Required Task has Started')
+# valid_loader = dataloader_test
+# print(f'# of Test batches is {len(valid_loader)}')
+# xx1=learner.get_preds(dl=valid_loader)
+# #%%
+# #%%
+# # Bottstrap code
 
-total_samples = len(valid_loader.dataset)
-print("Total number of samples in dataloader_test:", total_samples)
-print(f'# of Test batches is {len(valid_loader)}')
+# act=nn.Sigmoid()
+# import sklearn
+# from sklearn import metrics
+# from random import choices
+# f_l = torch.stack((act(xx1[0]), xx1[1]), axis=1)
+# auprc_scores = np.zeros((100, 1))
+# auc_scores = np.zeros((100, 1))
+# tmp = np.zeros((600, 2))
+# #%%
+# for i in range(100):
+#     sub_sample = choices(list(f_l), k=600)
+#     for j in range(len(sub_sample)): tmp[j, :] = sub_sample[j]
+#     for k in range(1):
+#         t_labels = tmp[:, k + 1]  ##tmp[:,k+1]
+#         preds = tmp[:, k]
+#         auprc_scores[i, k] = sklearn.metrics.average_precision_score(t_labels, preds)
+#         fpr, tpr, _ = metrics.roc_curve(t_labels, preds)
+#         precision, recall, _ = metrics.precision_recall_curve(t_labels, preds)
+#         auc = metrics.roc_auc_score(t_labels, preds)
+#         auc_scores[i, k] = sklearn.metrics.roc_auc_score(t_labels, preds)
+# print(np.mean(auprc_scores, axis=0))
+# print(np.mean(auc_scores, axis=0))
+# #%%
+# import matplotlib.pyplot as plt
+# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 
-xx1=learner.get_preds(dl=valid_loader)
-#%%
-#%%
-# Bottstrap code
+# # Create box plots for auc_scores
+# ax1.boxplot(auc_scores, labels=['AUC Scores'], notch=True, sym='')
 
-act=nn.Sigmoid()
-import sklearn
-from sklearn import metrics
-from random import choices
-f_l = torch.stack((act(xx1[0]), xx1[1]), axis=1)
-num_samples = 1000
-auprc_scores = np.zeros((num_samples, 1))
-auc_scores = np.zeros((num_samples, 1))
-tmp = np.zeros((num_samples, 2))
-#%%
-for i in range(num_samples):
-    sub_sample = choices(list(f_l), k=total_samples)
-    for j in range(len(sub_sample)): tmp[j, :] = sub_sample[j]
-    for k in range(1):
-        t_labels = tmp[:, k + 1]  ##tmp[:,k+1]
-        preds = tmp[:, k]
-        auprc_scores[i, k] = sklearn.metrics.average_precision_score(t_labels, preds)
-        fpr, tpr, _ = metrics.roc_curve(t_labels, preds)
-        precision, recall, _ = metrics.precision_recall_curve(t_labels, preds)
-        auc = metrics.roc_auc_score(t_labels, preds)
-        auc_scores[i, k] = sklearn.metrics.roc_auc_score(t_labels, preds)
-print(np.mean(auprc_scores, axis=0))
-print(np.mean(auc_scores, axis=0))
+# # Set y-axis label for auc_scores
+# ax1.set_ylabel('Scores')
 
-#%%
-# Create a figure and axes
-# Create a figure and axes
-import matplotlib.pyplot as plt
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+# # Set title for auc_scores
+# ax1.set_title('Box Plot of AUC Scores')
 
-# Create box plots for auc_scores
-ax1.boxplot(auc_scores, labels=['AUC Scores'], notch=True, sym='')
+# # Create box plots for auprc_scores
+# ax2.boxplot(auprc_scores, labels=['AUPRC Scores'], notch=True, sym='')
 
-# Set y-axis label for auc_scores
-ax1.set_ylabel('Scores')
+# # Set y-axis label for auprc_scores
+# ax2.set_ylabel('Scores')
 
-# Set title for auc_scores
-ax1.set_title('Box Plot of AUC Scores')
+# # Set title for auprc_scores
+# ax2.set_title('Box Plot of AUPRC Scores')
 
-# Create box plots for auprc_scores
-ax2.boxplot(auprc_scores, labels=['AUPRC Scores'], notch=True, sym='')
-
-# Set y-axis label for auprc_scores
-ax2.set_ylabel('Scores')
-
-# Set title for auprc_scores
-ax2.set_title('Box Plot of AUPRC Scores')
-
-# Adjust spacing between subplots
-plt.subplots_adjust(wspace=0.5)
-# Set main title
-fig.suptitle(save_model_name)
-# plt.title(save_model_name)
-# Show the plot
-# Save the figure as an image file
-fig.savefig(save_model_name + '.png')
-plt.show()
-#%%
-#%%
-# Define the file path
-file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'
-data = {
-    'auc_scores': np.array(auc_scores),
-    'auprc_scores': np.array(auprc_scores)
-}
-# Save the data as an npz file
-np.savez(file_path, **data)
+# # Adjust spacing between subplots
+# plt.subplots_adjust(wspace=0.5)
+# # Set main title
+# fig.suptitle(save_model_name)
+# # plt.title(save_model_name)
+# # Show the plot
+# # Save the figure as an image file
+# fig.savefig(save_model_name + '.png')
+# plt.show()
+# #%%
+# # Define the file path
+# file_path = '/scratch/pterway/slivit/SLIViT/npzfiles/' + save_model_name + '.npz'
+# data = {
+#     'auc_scores': np.array(auc_scores),
+#     'auprc_scores': np.array(auprc_scores)
+# }
+# # Save the data as an npz file
+# np.savez(file_path, **data)
 #%%
 # create a box plot with confidence intervals
 #%%

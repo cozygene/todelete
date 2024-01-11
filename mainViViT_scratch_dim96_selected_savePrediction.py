@@ -8,7 +8,7 @@
 import gc
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # GPU ID
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"  # GPU ID
 #%%
 import numpy as np
 import pandas as pd
@@ -212,12 +212,12 @@ class ResNet3D(nn.Module):
 
 #%%
 # dim_head = 64
-depth = 4
-dim = 192
+depth = 6
+dim = 96
 
 # model =  ViViT(224, 16, 1, 28, depth=depth, dim_head=dim_head)
 # default configuration
-model =  ViViT(224, 16, 1, 28, depth = depth)
+model =  ViViT(224, 16, 1, 28, depth = depth, dim = dim)
 
 model = model.cuda()
 
@@ -241,7 +241,7 @@ dls = DataLoaders(dataloader, dataloader_validation)
 
 dls.c = 2
 # save_model_name = 'ViVitPretrain'
-save_model_name = f'ViVitPretrain_dim{dim}_depth{depth}'
+save_model_name = f'ViVitPretrain_selected_dim{dim}_depth{depth}'
 learner = Learner(dls, model, model_dir=f'/scratch/pterway/slivit/SLIViT/',
                   cbs=[WandbCallback(), EarlyStoppingCallback(patience=5)],
                   loss_func=nn.BCEWithLogitsLoss())
@@ -293,7 +293,6 @@ for i in range(num_samples):
         auc_scores[i, k] = sklearn.metrics.roc_auc_score(t_labels, preds)
 print(np.mean(auprc_scores, axis=0))
 print(np.mean(auc_scores, axis=0))
-
 #%%
 # Create a figure and axes
 # Create a figure and axes
