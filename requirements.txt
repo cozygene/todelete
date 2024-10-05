@@ -1,0 +1,7 @@
+fastai==2.7.17
+wandb==0.18.2
+transformers==4.45.1
+scikit-image==0.21.0
+medmnist==3.0.2
+pydicom==2.4.4
+vit_pytorch==1.7.12
